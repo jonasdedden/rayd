@@ -173,6 +173,20 @@ impl RefCounter {
     pub fn is_empty(&self) -> bool {
         self.entries.lock().is_empty()
     }
+
+    /// Take ownership of every currently-tracked id and clear the
+    /// counter. Used by the shutdown path so the caller can free the
+    /// corresponding plasma + memory-store entries before dropping
+    /// the worker. After this call returns, every subsequent
+    /// `dec_local` / `remove_borrower` / `complete_submit_dep` is a
+    /// no-op (entry-not-found short-circuits gracefully).
+    #[must_use]
+    pub fn drain_ids(&self) -> Vec<ObjectId> {
+        let mut guard = self.entries.lock();
+        let ids = guard.keys().copied().collect();
+        guard.clear();
+        ids
+    }
 }
 
 #[cfg(test)]

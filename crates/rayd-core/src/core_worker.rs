@@ -478,6 +478,33 @@ impl CoreWorker {
         spilled
     }
 
+    /// Drain every id this worker is tracking and evict each from the
+    /// local plasma + memory store. Called during `rayd.shutdown()` so
+    /// the driver doesn't leave its puts / task-return values resident
+    /// in the plasma server after the Python process exits. Errors
+    /// from individual evictions are logged and swallowed — best-
+    /// effort cleanup, never a hard fail.
+    ///
+    /// After this returns, the `RefCounter` is empty and any
+    /// subsequent `dec_local_ref` from a late `ObjectRef.__del__`
+    /// becomes a no-op (entry-not-found short-circuits).
+    pub fn free_all_local(&self) {
+        let ids = self.refs.drain_ids();
+        let count = ids.len();
+        for id in ids {
+            if let Err(e) = self.evict_local(id) {
+                tracing::warn!(
+                    error = %e,
+                    object_id = %id.hex(),
+                    "rayd-core: free_all_local: evict failed"
+                );
+            }
+        }
+        if count > 0 {
+            tracing::debug!(count, "rayd-core: free_all_local drained worker refs");
+        }
+    }
+
     /// Public twin of `free_unpinned` for tests / lineage:
     /// drop the local memory store entry AND remove from plasma,
     /// without touching the reference counter or firing the
