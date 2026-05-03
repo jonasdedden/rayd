@@ -141,6 +141,13 @@ jobs:
         # invoking maturin. The venv is fresh from the previous step,
         # nothing has changed, the validation is wasted overhead.
         run: uv run --no-sync maturin develop --uv
+      - name: Build rayd-cli binary
+        # Most pytest cases spawn `target/debug/rayd` to run a real
+        # GCS/raylet/plasma cluster. Without this step pytest reports
+        # "passed" but ~50 tests skip with "rayd-cli binary not built".
+        # The dev-profile dep tree is already cached from the maturin
+        # step above, so this is mostly the bin's own crate compile.
+        run: cargo build -p rayd-cli --locked
       - name: Verify committed stubs match generator output
         run: |
           # `make stubs-only` regenerates _native.pyi from the already-
