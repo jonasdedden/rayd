@@ -24,7 +24,7 @@ from rayd._native import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 # Internal constants
 _KIND_PAYLOAD_LEN: int = 2
@@ -219,7 +219,7 @@ def put(value: object) -> ObjectRef:
     return _native.put(value)
 
 
-def get(refs: ObjectRef | list[ObjectRef], timeout: float | None = None) -> object:
+def get(refs: ObjectRef | Sequence[ObjectRef], timeout: float | None = None) -> object:
     """Block until `refs` resolve. Raises on first failure.
 
     For refs whose owner-raylet is on a remote node, this fetches the
@@ -232,7 +232,7 @@ def get(refs: ObjectRef | list[ObjectRef], timeout: float | None = None) -> obje
     return _native.get(refs, timeout)
 
 
-def _ensure_local_for_remote_refs(refs: ObjectRef | list[ObjectRef]) -> None:
+def _ensure_local_for_remote_refs(refs: ObjectRef | Sequence[ObjectRef]) -> None:
     """Prepare refs for `_native.get`.
 
     Three paths per ref:
@@ -248,7 +248,11 @@ def _ensure_local_for_remote_refs(refs: ObjectRef | list[ObjectRef]) -> None:
     if not _native.is_initialized():
         return
     local_nid = _native.node_id()
-    targets = refs if isinstance(refs, list) else [refs]
+    # Distinguish single-ref from any sequence by testing for ObjectRef
+    # rather than `isinstance(refs, list)` — the parameter accepts any
+    # `Sequence[ObjectRef]` (tuples, generators-realised-as-tuples, ...),
+    # not just lists, so an isinstance-on-list check would mis-route.
+    targets: Sequence[ObjectRef] = [refs] if isinstance(refs, ObjectRef) else refs
     nodes_cache: list[_native.NodeInfo] | None = None
     for ref in targets:
         owner_nid = ref.owner_node_id
@@ -349,7 +353,7 @@ def _maybe_resubmit_local_lineage(ref: ObjectRef) -> None:
 
 
 def get_settled(
-    refs: list[ObjectRef],
+    refs: Sequence[ObjectRef],
     timeout: float | None = None,
 ) -> list[Result[object]]:
     """Resolve every ref into a typed `Result` without raising on failure.
@@ -379,7 +383,7 @@ def get_settled(
     return out
 
 
-def state(refs: list[ObjectRef]) -> dict[ObjectRef, RefState]:
+def state(refs: Sequence[ObjectRef]) -> dict[ObjectRef, RefState]:
     """Snapshot every ref's lifecycle state. Cheap; no deserialization."""
     raw = _native.state(refs)
     out: dict[ObjectRef, RefState] = {}
@@ -392,7 +396,7 @@ def state(refs: list[ObjectRef]) -> dict[ObjectRef, RefState]:
 
 
 def wait(
-    refs: list[ObjectRef],
+    refs: Sequence[ObjectRef],
     num_returns: int = 1,
     timeout: float | None = None,
 ) -> tuple[list[ObjectRef], list[ObjectRef]]:
@@ -406,7 +410,7 @@ def wait(
 
 
 def wait_with_states(
-    refs: list[ObjectRef],
+    refs: Sequence[ObjectRef],
     timeout: float | None = None,
 ) -> dict[ObjectRef, RefState]:
     """Block up to `timeout` for refs to settle; return per-ref states."""
@@ -423,7 +427,7 @@ def wait_with_states(
     return out
 
 
-def free(refs: list[ObjectRef]) -> None:
+def free(refs: Sequence[ObjectRef]) -> None:
     """Free a list of refs from the local store."""
     _native.free(refs)
 

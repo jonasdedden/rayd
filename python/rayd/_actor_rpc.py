@@ -50,7 +50,7 @@ import threading
 from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 
 _DRIVER_RPC_SERVER: _DriverActorRpcServer | None = None
@@ -66,7 +66,7 @@ class _DriverActorRpcServer:
     def __init__(self) -> None:
         from rayd._worker import _decode, _encode, _recv_frame, _send_frame  # noqa: PLC0415
 
-        self._encode: Callable[[dict[str, object]], bytes] = _encode
+        self._encode: Callable[[Mapping[str, object]], bytes] = _encode
         self._decode: Callable[[bytes], dict[str, object]] = _decode
         self._recv_frame: Callable[[socket.socket], bytes | None] = _recv_frame
         self._send_frame: Callable[[socket.socket, bytes], None] = _send_frame
@@ -162,7 +162,7 @@ class _DriverActorRpcServer:
             with contextlib.suppress(OSError):
                 conn.close()
 
-    def _handle_invoke(self, conn: socket.socket, msg: dict[str, object]) -> None:
+    def _handle_invoke(self, conn: socket.socket, msg: Mapping[str, object]) -> None:
         from rayd._actor import _lookup_actor_optional  # noqa: PLC0415
 
         actor_id = msg.get("actor_id")
@@ -198,7 +198,7 @@ class _DriverActorRpcServer:
             return
         self._reply(conn, {"kind": "actor_invoke_ack"})
 
-    def _reply(self, conn: socket.socket, message: dict[str, object]) -> None:
+    def _reply(self, conn: socket.socket, message: Mapping[str, object]) -> None:
         with contextlib.suppress(OSError):
             self._send_frame(conn, self._encode(message))
 

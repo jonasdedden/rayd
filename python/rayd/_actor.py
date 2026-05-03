@@ -41,6 +41,8 @@ import cloudpickle  # type: ignore[import-untyped]
 from rayd import _native
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from rayd._native import ObjectRef
 
 _HANDSHAKE_TIMEOUT_S = 5.0
@@ -163,7 +165,7 @@ class _ActorSubprocess:
         self,
         cls: type,
         args: tuple[object, ...],
-        kwargs: dict[str, object] | None,
+        kwargs: Mapping[str, object] | None,
         max_restarts: int,
         name: str | None = None,
     ) -> None:
@@ -402,7 +404,7 @@ class _ActorSubprocess:
         self,
         method_name: str,
         args: tuple[object, ...],
-        kwargs: dict[str, object] | None,
+        kwargs: Mapping[str, object] | None,
     ) -> ObjectRef:
         """Send a method-call frame.
 
@@ -581,7 +583,7 @@ class _RemoteActorHandle:
         self,
         method_name: str,
         args: tuple[object, ...],
-        kwargs: dict[str, object] | None,
+        kwargs: Mapping[str, object] | None,
     ) -> ObjectRef:
         # Lazy-import the wire helpers (same idiom `_ActorSubprocess`
         # uses) — keeps the module-import cost down for callers that

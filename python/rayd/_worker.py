@@ -22,10 +22,14 @@ import struct
 import sys
 import traceback
 import uuid
+from typing import TYPE_CHECKING
 
 import cloudpickle  # type: ignore[import-untyped]
 
 import rayd
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 # Maximum frame size — must match `MAX_FRAME_BYTES` in wire.rs.
 _MAX_FRAME_BYTES = 64 * 1024 * 1024
@@ -72,7 +76,7 @@ def _recv_frame(sock: socket.socket) -> bytes | None:
     return body
 
 
-def _encode(message: dict[str, object]) -> bytes:
+def _encode(message: Mapping[str, object]) -> bytes:
     return pickle.dumps(message, protocol=5)
 
 
@@ -152,7 +156,7 @@ def _store_via_native_seal(object_id_bytes: bytes, metadata: bytes, data: bytes)
 
 
 def _spread_error(
-    object_ids: list[bytes],
+    object_ids: Sequence[bytes],
     exc: BaseException,
     returns: list[dict[str, object]],
 ) -> None:
@@ -164,7 +168,7 @@ def _spread_error(
         returns.append({"object_id": oid, "metadata": err_meta, "data_size": size})
 
 
-def _execute_task(message: dict[str, object]) -> dict[str, object]:
+def _execute_task(message: Mapping[str, object]) -> dict[str, object]:
     """Run a `dispatch_task` message; return the matching `task_complete`."""
     task_id = message["task_id"]
     if not isinstance(task_id, bytes):
@@ -229,7 +233,7 @@ def _execute_task(message: dict[str, object]) -> dict[str, object]:
 # ── Main loop ─────────────────────────────────────────────────────────
 
 
-def main(argv: list[str]) -> int:
+def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="rayd._worker")
     parser.add_argument("--dispatch-socket", required=True)
     parser.add_argument("--plasma-socket", required=True)
