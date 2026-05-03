@@ -98,10 +98,7 @@ def main() -> None:
     finally:
         rayd.shutdown()
 
-    header = (
-        f"{'size':>10}  {'put p50':>10}  {'put rate':>14}  "
-        f"{'get p50':>10}  {'get rate':>14}"
-    )
+    header = f"{'size':>10}  {'put p50':>10}  {'put rate':>14}  {'get p50':>10}  {'get rate':>14}"
     print(header)
     print("-" * len(header))
     for size, put, get in rows:

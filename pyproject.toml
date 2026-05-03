@@ -13,7 +13,7 @@ name = "rayd"
 dynamic = ["version"]
 description = "A Rust+PyO3 reimplementation of Ray Core (tasks, actors, distributed object store)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "ray-replacement contributors" }]
 classifiers = [
@@ -51,7 +51,7 @@ include = [
 
 # ── mypy ─────────────────────────────────────────────────────────────────
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 strict = true
 disallow_any_unimported = true
 disallow_any_explicit = true
@@ -64,7 +64,7 @@ files = ["python/rayd"]
 
 # ── ruff ─────────────────────────────────────────────────────────────────
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 100
 src = ["python"]
 

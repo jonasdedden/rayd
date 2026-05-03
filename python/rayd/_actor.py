@@ -34,7 +34,7 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar, final
+from typing import TYPE_CHECKING, final
 
 import cloudpickle  # type: ignore[import-untyped]
 
@@ -42,8 +42,6 @@ from rayd import _native
 
 if TYPE_CHECKING:
     from rayd._native import ObjectRef
-
-T = TypeVar("T")
 
 _HANDSHAKE_TIMEOUT_S = 5.0
 _TERMINATE_TIMEOUT_S = 5.0
@@ -280,14 +278,14 @@ class _ActorSubprocess:
             raise TypeError(msg)
         self._actor_pid: int = pid_raw
 
-        spawn_frame = self._encode({
-            "kind": "actor_spawn",
-            "class": cloudpickle.dumps(self._cls),
-            "args": cloudpickle.dumps(self._ctor_args),
-            "kwargs": (
-                cloudpickle.dumps(self._ctor_kwargs) if self._ctor_kwargs else None
-            ),
-        })
+        spawn_frame = self._encode(
+            {
+                "kind": "actor_spawn",
+                "class": cloudpickle.dumps(self._cls),
+                "args": cloudpickle.dumps(self._ctor_args),
+                "kwargs": (cloudpickle.dumps(self._ctor_kwargs) if self._ctor_kwargs else None),
+            }
+        )
         self._send_frame(self._sock, spawn_frame)
 
         # Each spawn gets its own reader thread; the old one (if
@@ -456,13 +454,15 @@ class _ActorSubprocess:
             self._in_flight.add(oid_bytes)
             sock = self._sock
 
-        frame = self._encode({
-            "kind": "actor_call",
-            "method": method_name,
-            "args": args_blob,
-            "kwargs": kwargs_blob,
-            "result_oid": oid_bytes,
-        })
+        frame = self._encode(
+            {
+                "kind": "actor_call",
+                "method": method_name,
+                "args": args_blob,
+                "kwargs": kwargs_blob,
+                "result_oid": oid_bytes,
+            }
+        )
         # Send lock: serializes outgoing frames so two callers don't
         # interleave bytes on the wire. Separate from the state lock
         # so the reader can keep consuming while we block on send.
@@ -755,7 +755,7 @@ class ActorHandle:
 
 
 @final
-class ActorClass(Generic[T]):
+class ActorClass[T]:
     """Returned by `@rayd.actor` on a class. `.remote()` instantiates."""
 
     def __init__(
@@ -807,7 +807,7 @@ class ActorClass(Generic[T]):
         )
 
 
-def remote_class(cls: type[T]) -> ActorClass[T]:
+def remote_class[T](cls: type[T]) -> ActorClass[T]:
     """`rayd.actor(cls)` — surfaced through the `@rayd.actor` decorator."""
     return ActorClass(cls)
 

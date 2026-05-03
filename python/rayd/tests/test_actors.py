@@ -206,9 +206,7 @@ def test_actor_restarts_after_crash_when_budget_remains() -> None:
             if new_pid != original_pid:
                 break
             time.sleep(0.05)
-        assert new_pid != original_pid, (
-            f"actor did not respawn: pid still {original_pid}"
-        )
+        assert new_pid != original_pid, f"actor did not respawn: pid still {original_pid}"
         assert handle.restarts_used == 1
         # Fresh state — increment from 0.
         assert rayd.get(handle.increment.remote()) == 1

@@ -100,9 +100,7 @@ def _build_error_payload(exc: BaseException) -> bytes:
           [u32 LE: pickled_len][pickled bytes]
     """
     message = repr(exc).encode("utf-8")
-    tb_str = "".join(
-        traceback.format_exception(type(exc), exc, exc.__traceback__)
-    ).encode("utf-8")
+    tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).encode("utf-8")
     try:
         pickled = cloudpickle.dumps(exc)
     except Exception:  # noqa: BLE001

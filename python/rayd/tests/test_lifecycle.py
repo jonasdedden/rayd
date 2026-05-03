@@ -110,10 +110,7 @@ def external_plasma() -> Generator[Path]:
                 deadline = time.monotonic() + 5.0
                 while time.monotonic() < deadline and not socket.exists():
                     if proc.poll() is not None:
-                        msg = (
-                            f"rayd plasma-server exited prematurely "
-                            f"(rc={proc.returncode})"
-                        )
+                        msg = f"rayd plasma-server exited prematurely (rc={proc.returncode})"
                         raise RuntimeError(msg)
                     time.sleep(0.02)
                 if not socket.exists():

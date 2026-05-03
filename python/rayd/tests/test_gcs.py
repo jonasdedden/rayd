@@ -271,23 +271,26 @@ def _spawn_raylet(gcs_addr: str) -> Generator[None]:
     cli = _rayd_cli()
     tmp = tempfile.TemporaryDirectory(prefix="rayd-raylet-test-")
     plasma_socket = Path(tmp.name) / "plasma.sock"
-    with tmp, subprocess.Popen(  # noqa: S603
-        [
-            str(cli),
-            "start",
-            f"--address={gcs_addr}",
-            "--raylet-bind",
-            "127.0.0.1:0",
-            "--advertise-host",
-            "127.0.0.1",
-            "--plasma-socket",
-            str(plasma_socket),
-            "--plasma-capacity-mb",
-            "16",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    ) as proc:
+    with (
+        tmp,
+        subprocess.Popen(  # noqa: S603
+            [
+                str(cli),
+                "start",
+                f"--address={gcs_addr}",
+                "--raylet-bind",
+                "127.0.0.1:0",
+                "--advertise-host",
+                "127.0.0.1",
+                "--plasma-socket",
+                str(plasma_socket),
+                "--plasma-capacity-mb",
+                "16",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ) as proc,
+    ):
         try:
             # No external readiness signal yet; sleep a beat for register.
             time.sleep(0.5)
@@ -944,9 +947,7 @@ def test_borrower_drop_notifies_owner_and_frees_object(
                     # Owner self-deregistered when it dropped, then
                     # the consumer's drop cleared the borrower side.
                     # Directory should be fully empty.
-                    assert final == "final_count=0", (
-                        f"expected directory cleared, got {final!r}"
-                    )
+                    assert final == "final_count=0", f"expected directory cleared, got {final!r}"
                 finally:
                     rayd.shutdown()
             finally:

@@ -17,6 +17,12 @@ stubs: build
 	RAYD_CDYLIB_PATH=$(shell .venv/bin/python -c 'import rayd._native, pathlib; print(rayd._native.__file__)') \
 	    cargo run --bin stub_gen --release
 	$(PYTHON) tools/fix_stubs.py python/rayd/_native.pyi
+	# Format the regenerated stub so the committed copy is byte-
+	# identical to a fresh regeneration — without this step the CI
+	# stubs-freshness diff fails on whitespace-only deltas (multi-line
+	# function signatures, `str | None` spacing, etc.) that pyo3-stub-gen
+	# produces but `ruff format` would normalise.
+	uv run ruff format python/rayd/_native.pyi
 
 test: build
 	cargo test --workspace

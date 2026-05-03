@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, ParamSpec, TypeVar, final
+from typing import TYPE_CHECKING, final
 
 from rayd import _native
 from rayd._actor import ActorClass, ActorHandle, get_actor
@@ -25,10 +25,6 @@ from rayd._native import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-T_co = TypeVar("T_co", covariant=True)
-P = ParamSpec("P")
-R = TypeVar("R")
 
 # Internal constants
 _KIND_PAYLOAD_LEN: int = 2
@@ -81,7 +77,7 @@ class Pending:
 
 @final
 @dataclass(frozen=True, slots=True)
-class Ok(Generic[T_co]):
+class Ok[T_co]:
     """A successful result carrying the unpickled value."""
 
     value: T_co
@@ -95,14 +91,14 @@ class Err:
     info: ErrorInfo
 
 
-Result = Ok[T_co] | Err | Pending
+type Result[T_co] = Ok[T_co] | Err | Pending
 
 
 # ── @rayd.remote ────────────────────────────────────────────────────────
 
 
 @final
-class RemoteFunction(Generic[P, R]):
+class RemoteFunction[**P, R]:
     """Wrap a user callable so it can be submitted via `.remote(...)`.
 
     Returned by the `@rayd.remote` decorator. The original callable is also
@@ -142,7 +138,7 @@ class RemoteFunction(Generic[P, R]):
         return first
 
 
-def remote(fn: Callable[P, R]) -> RemoteFunction[P, R]:
+def remote[**P, R](fn: Callable[P, R]) -> RemoteFunction[P, R]:
     """Wrap `fn` in a `RemoteFunction`; submit via `.remote(...)`.
 
     For stateful classes, use `@rayd.actor` instead — the two
@@ -153,7 +149,7 @@ def remote(fn: Callable[P, R]) -> RemoteFunction[P, R]:
     return RemoteFunction(fn)
 
 
-def actor(cls: type[R], *, max_restarts: int = 3) -> ActorClass[R]:
+def actor[R](cls: type[R], *, max_restarts: int = 3) -> ActorClass[R]:
     """Wrap a class so `MyClass.remote(*args)` creates an actor.
 
     Calling `.remote(*args, **kwargs)` spawns a per-actor subprocess,
@@ -298,10 +294,7 @@ def _resolve_remote_ref(
         None,
     )
     if owner_status != "alive":
-        msg = (
-            f"owner of ObjectRef({ref.hex}) is "
-            f"{owner_status or 'absent from GCS'}; cannot fetch"
-        )
+        msg = f"owner of ObjectRef({ref.hex}) is {owner_status or 'absent from GCS'}; cannot fetch"
         raise OwnerDiedError(msg)
     _fetch_with_retries(ref.object_id.to_bytes(), owner_nid)
     return nodes_cache
@@ -349,10 +342,7 @@ def _maybe_resubmit_local_lineage(ref: ObjectRef) -> None:
     if status == "ready":
         _native.try_resubmit_for_lineage(oid)
     elif status == "exhausted":
-        msg = (
-            f"object {ref.hex} cannot be reconstructed: "
-            f"task lineage exhausted retry budget"
-        )
+        msg = f"object {ref.hex} cannot be reconstructed: task lineage exhausted retry budget"
         raise ObjectUnreconstructableError(msg)
     # `not_recorded` / `not_yet_completed`: let `_native.get`
     # block on the existing attempt; nothing to do here.
@@ -395,10 +385,7 @@ def state(refs: list[ObjectRef]) -> dict[ObjectRef, RefState]:
     out: dict[ObjectRef, RefState] = {}
     for k, v in raw.items():
         if not isinstance(k, ObjectRef) or not isinstance(v, RefState):
-            msg = (
-                f"unexpected entry from state(): "
-                f"{type(k).__name__} -> {type(v).__name__}"
-            )
+            msg = f"unexpected entry from state(): {type(k).__name__} -> {type(v).__name__}"
             raise TypeError(msg)
         out[k] = v
     return out
