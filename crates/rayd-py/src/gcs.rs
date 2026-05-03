@@ -35,12 +35,39 @@ use tracing::info;
 const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2);
 const HEARTBEAT_INTERVAL_ENV: &str = "RAYD_HEARTBEAT_INTERVAL_MS";
 
+/// When set to `host:port`, the driver-attached raylet exposes its
+/// Prometheus `/metrics` endpoint on that address. Useful for local
+/// development with Grafana — the dev cluster setup wires this so
+/// the dashboard's raylet-side panels (`NodeIndex` hit ratio, Pull/Push
+/// rates, directory size, ...) get real data without needing to run
+/// a separate `rayd start --address` worker.
+const RAYLET_METRICS_BIND_ENV: &str = "RAYD_RAYLET_METRICS_BIND";
+
 fn heartbeat_interval() -> Duration {
     std::env::var(HEARTBEAT_INTERVAL_ENV)
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|&ms| ms > 0)
         .map_or(DEFAULT_HEARTBEAT_INTERVAL, Duration::from_millis)
+}
+
+/// Parse `RAYD_RAYLET_METRICS_BIND` into a `SocketAddr`, returning
+/// `None` when unset or unparseable. A bad value warns once but
+/// doesn't fail driver startup — metrics are observability, not a
+/// hard dependency.
+fn raylet_metrics_bind() -> Option<SocketAddr> {
+    let raw = std::env::var(RAYLET_METRICS_BIND_ENV).ok()?;
+    match raw.parse() {
+        Ok(addr) => Some(addr),
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                value = %raw,
+                "rayd-py: ignoring malformed {RAYLET_METRICS_BIND_ENV}"
+            );
+            None
+        }
+    }
 }
 
 /// Errors observable while standing up the GCS binding.
@@ -150,7 +177,7 @@ impl GcsBinding {
             heartbeat_interval: heartbeat_interval(),
             owner_sink: Some(owner_sink),
             object_manager: Some(Arc::clone(&object_manager)),
-            metrics_bind: None,
+            metrics_bind: raylet_metrics_bind(),
         };
         let raylet_handle = runtime.block_on(Raylet::start(raylet_config))?;
         let raylet_addr = raylet_handle.local_addr();

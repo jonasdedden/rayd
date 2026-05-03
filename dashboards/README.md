@@ -28,9 +28,19 @@ works across multi-datasource setups.
 
 - `Prometheus` — datasource selector (auto-populated from your
   Grafana config).
-- `Instance` — multi-select filter against the `instance` label that
-  Prometheus stamps on every series. Useful when you scrape multiple
-  raylets or drivers in one cluster. Defaults to `All`.
+- `Rayd cluster` — multi-select filter against the `rayd_cluster`
+  label that every series carries. The dev `prometheus.yml` stamps
+  each scrape target with `rayd_cluster: rayd-dev`. In a multi-rayd-
+  cluster setup (one central Grafana, several rayd deployments) this
+  picker scopes the dashboard to one of them. The `rayd_` prefix is
+  deliberate — it avoids colliding with the generic `cluster` label
+  that platform Prometheus instances often already use to identify a
+  k8s cluster, so this dashboard composes cleanly on top of an
+  existing label scheme. Defaults to `All`.
+- `Instance` — multi-select filter against the `instance` label.
+  Cascades from `Rayd cluster`: only lists instances within the
+  selected cluster(s), so a 100-node cluster's instance picker
+  doesn't bleed options from sibling clusters. Defaults to `All`.
 
 ### Scraping config
 
