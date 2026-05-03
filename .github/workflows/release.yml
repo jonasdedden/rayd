@@ -61,7 +61,7 @@ jobs:
           # in rayd-gcs and rayd-raylet.
           before-script-linux: |
             yum install -y protobuf-compiler || dnf install -y protobuf-compiler
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheel-linux-${{ matrix.target }}
           path: dist/*.whl
@@ -89,9 +89,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # `arduino/setup-protoc` has no Node-24 release, which prints
+      # a deprecation warning. Homebrew already has protoc and is
+      # cached on macOS runners, so just install it directly.
+      - run: brew install protobuf
       - name: Sync workspace + pyproject version to tag
         run: python3 tools/set_version_from_tag.py "${{ inputs.ref || github.ref }}"
       - name: Build wheel
@@ -99,7 +100,7 @@ jobs:
         with:
           target: ${{ matrix.target }}-apple-darwin
           args: --release --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheel-macos-${{ matrix.target }}
           path: dist/*.whl
@@ -126,7 +127,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -143,7 +144,7 @@ jobs:
     needs: [linux, macos, sdist]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
@@ -227,12 +228,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
       - name: Create draft release with attachments
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           draft: true

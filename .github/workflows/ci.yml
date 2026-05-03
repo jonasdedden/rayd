@@ -42,12 +42,11 @@ jobs:
           components: rustfmt, clippy
       # `prost-build` runs `protoc` at build time to compile the
       # `.proto` files in rayd-gcs and rayd-raylet. The Ubuntu runner
-      # doesn't ship it, so we install via the action below — does
-      # the same job as `apt-get install protobuf-compiler` but is
-      # cached + cross-platform.
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # doesn't ship it, so install via apt — `arduino/setup-protoc`
+      # would be the cross-platform equivalent but it has no Node 24
+      # release as of 2026-05, which prints a deprecation warning on
+      # every job. apt is fine here since every PR job is Linux.
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust
@@ -65,9 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust
@@ -93,9 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: loom
@@ -116,16 +111,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: python-ext
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v8
         with:
           enable-cache: true
       - name: Install dev deps
@@ -198,16 +191,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends protobuf-compiler
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: wheel-${{ matrix.os }}
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v8
         with:
           enable-cache: true
       - name: Install dev deps (for maturin)
@@ -236,7 +227,7 @@ jobs:
             || (echo "::error::wheel missing _native.pyi"; exit 1)
           unzip -l "$wheel" | grep -q "rayd/py.typed" \
             || (echo "::error::wheel missing py.typed"; exit 1)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheel-${{ matrix.os }}
           path: dist/*.whl
