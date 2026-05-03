@@ -18,14 +18,6 @@ env:
   RUSTFLAGS: -D warnings
   # Tested target for tests + the only abi3 floor we ship (PyO3 abi3-py312).
   PYTHON_VERSION: "3.12"
-  # GitHub deprecates Node.js 20 on Actions runners (forced to Node 24
-  # on 2026-06-02, fully removed 2026-09-16). This env var opts the
-  # whole workflow into Node 24 immediately, so any action that hasn't
-  # published a Node-24-native major yet still runs on 24 instead of
-  # printing a "may not work as expected" warning every job. Safe to
-  # remove once all `uses:` versions in this file are confirmed Node-24
-  # native (which is the long-term fix; this is the safety net).
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ──────────────────────────────────────────────────────────────────
