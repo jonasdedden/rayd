@@ -1,0 +1,35 @@
+[package]
+name = "rayd-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "PyO3 bindings for rayd."
+
+[lints]
+workspace = true
+
+[lib]
+name = "rayd_native"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "stub_gen"
+path = "src/bin/stub_gen.rs"
+
+[dependencies]
+rayd-core.workspace = true
+rayd-gcs.workspace = true
+rayd-plasma.workspace = true
+rayd-raylet.workspace = true
+pyo3 = { version = "0.28", features = ["abi3-py312", "extension-module", "experimental-inspect"] }
+pyo3-introspection = "0.28"
+parking_lot.workspace = true
+bytes.workspace = true
+tempfile = "3"
+tracing.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+gethostname = "0.5"
+prometheus.workspace = true
+axum.workspace = true

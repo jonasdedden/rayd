@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package rayd.gcs.node_info.v1;
+
+// NodeRegistry: cluster-wide node registry.
+//
+// The GCS owns the source-of-truth list of nodes. Each `Register` call
+// returns a freshly-minted 16-byte node id; subsequent `Drain`,
+// `Heartbeat`, and queries echo it back. Phase 3.3 ships an in-memory
+// implementation; durability lands in 3.5+.
+service NodeRegistry {
+  // Called by a node when it joins the cluster.
+  rpc Register(RegisterRequest) returns (RegisterReply);
+
+  // Mark a node as draining (no new tasks should target it).
+  rpc Drain(DrainRequest) returns (DrainReply);
+
+  // Snapshot all nodes currently registered.
+  rpc List(ListRequest) returns (ListReply);
+
+  // Liveness ping. Updates `last_heartbeat_unix_ms`. Phase 3.3 doesn't
+  // expire nodes that miss heartbeats; that arrives with Phase 3.5.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
+
+  // Server-streaming subscription for node-state changes (Phase 4.3.3c).
+  // The server first pushes a snapshot of currently-known nodes, each
+  // with its own monotonic `sequence`. After the snapshot, every
+  // Register / Drain / Heartbeat-timeout flip emits another `NodeEvent`.
+  //
+  // Reconnect: clients pass `last_seen_sequence` to resume. The server
+  // keeps a small ring buffer; on overflow it returns `OUT_OF_RANGE`
+  // and the client should reconnect with `last_seen_sequence = 0` to
+  // pick up a fresh snapshot.
+  rpc WatchNodes(WatchNodesRequest) returns (stream NodeEvent);
+}
+
+// 16-byte server-assigned node id, plus the address other nodes use to
+// reach this node's per-node services (raylet/dispatcher).
+message NodeAddress {
+  // Hostname or IP literal.
+  string host = 1;
+  // TCP port for the node's per-node gRPC services.
+  uint32 port = 2;
+  // 16-byte node id.
+  bytes node_id = 3;
+  // Path to the node's plasma UDS socket. Useful for local-host tooling.
+  string plasma_socket = 4;
+}
+
+// Resource counts a node advertises at registration time.
+message Resources {
+  uint32 num_cpus = 1;
+  uint32 num_gpus = 2;
+  uint64 memory_bytes = 3;
+}
+
+enum NodeStatus {
+  NODE_STATUS_UNSPECIFIED = 0;
+  NODE_STATUS_ALIVE = 1;
+  NODE_STATUS_DRAINING = 2;
+  NODE_STATUS_DEAD = 3;
+}
+
+message NodeInfo {
+  NodeAddress address = 1;
+  Resources resources = 2;
+  NodeStatus status = 3;
+  uint64 registered_at_unix_ms = 4;
+  uint64 last_heartbeat_unix_ms = 5;
+}
+
+message RegisterRequest {
+  string host = 1;
+  uint32 port = 2;
+  string plasma_socket = 3;
+  Resources resources = 4;
+}
+
+message RegisterReply {
+  // Server-assigned 16-byte id. Caller must echo this back on subsequent
+  // RPCs (Drain, Heartbeat).
+  bytes node_id = 1;
+  // Identifies the GCS instance. Changes if the GCS restarts. Callers can
+  // use this to detect a GCS bounce and re-register if needed.
+  bytes cluster_session_id = 2;
+}
+
+message DrainRequest {
+  bytes node_id = 1;
+}
+
+message DrainReply {}
+
+message ListRequest {
+  // Empty filter = return all nodes.
+}
+
+message ListReply {
+  repeated NodeInfo nodes = 1;
+}
+
+message HeartbeatRequest {
+  bytes node_id = 1;
+}
+
+message HeartbeatReply {}
+
+// Resume token: 0 = "from a fresh snapshot", N = "everything strictly
+// after sequence N". Last-seen sequence is the `sequence` field of the
+// most recent NodeEvent the client successfully processed.
+message WatchNodesRequest {
+  uint64 last_seen_sequence = 1;
+}
+
+// One node-state notification. `sequence` is monotonic per GCS session
+// (resets on GCS restart — clients detect via the cluster_session_id
+// from Register).
+message NodeEvent {
+  uint64 sequence = 1;
+  NodeInfo node = 2;
+}

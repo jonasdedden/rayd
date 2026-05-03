@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package rayd.gcs.actor_info.v1;
+
+// ActorRegistry: cluster-wide named-actor directory.
+//
+// Drivers `RegisterActor` when an `.options(name=…)` actor is created;
+// other drivers `GetActor(name)` to discover the owner. The actor
+// `actor_id` is driver-minted (16-byte) and uniquely identifies the
+// live subprocess. Phase 5.4c added `driver_actor_host`/`port` so
+// cross-driver `rayd.get_actor` can dial the owner driver's TCP
+// listener for `actor_invoke` frames.
+service ActorRegistry {
+  rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
+
+  rpc GetActor(GetActorRequest) returns (GetActorReply);
+
+  rpc UnregisterActor(UnregisterActorRequest) returns (UnregisterActorReply);
+
+  // Snapshot all named actors the GCS knows about. Mostly for tests &
+  // tooling; production callers should use `GetActor` by name.
+  rpc List(ListActorsRequest) returns (ListActorsReply);
+}
+
+message ActorInfo {
+  // Caller-chosen name. Unique within the cluster.
+  string name = 1;
+  // 16-byte driver-minted actor id.
+  bytes actor_id = 2;
+  // 16-byte node id the owner driver is registered against.
+  bytes owner_node_id = 3;
+  // Driver process pid (informational; useful for `ray list actors`-like
+  // tools).
+  uint32 owner_pid = 4;
+  // Wall-clock registration time.
+  uint64 registered_at_unix_ms = 5;
+  // Hostname or IP literal of the owner driver's actor-RPC TCP listener.
+  // Empty when the owner runs without a listener (e.g. unit tests that
+  // skip the cross-driver path).
+  string driver_actor_host = 6;
+  // TCP port of the owner driver's actor-RPC listener. Zero alongside an
+  // empty host means "no listener".
+  uint32 driver_actor_port = 7;
+}
+
+message RegisterActorRequest {
+  string name = 1;
+  bytes actor_id = 2;
+  bytes owner_node_id = 3;
+  uint32 owner_pid = 4;
+  string driver_actor_host = 5;
+  uint32 driver_actor_port = 6;
+}
+
+message RegisterActorReply {}
+
+message GetActorRequest {
+  string name = 1;
+}
+
+message GetActorReply {
+  ActorInfo actor = 1;
+}
+
+message UnregisterActorRequest {
+  string name = 1;
+  // Caller's actor_id. Must match the registered entry, else the call
+  // is rejected. Prevents a stale handle from clobbering a freshly-
+  // registered name in the same slot.
+  bytes actor_id = 2;
+}
+
+message UnregisterActorReply {}
+
+message ListActorsRequest {}
+
+message ListActorsReply {
+  repeated ActorInfo actors = 1;
+}

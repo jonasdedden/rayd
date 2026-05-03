@@ -1,0 +1,93 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rayd-cli",
+    "crates/rayd-core",
+    "crates/rayd-gcs",
+    "crates/rayd-plasma",
+    "crates/rayd-py",
+    "crates/rayd-raylet",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+authors = ["ray-replacement contributors"]
+repository = "https://github.com/jonded94/ray-replacement"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+# `--cfg loom` is set in `RUSTFLAGS` to compile the loom-gated
+# concurrency tests in `rayd-core::ref_counter`. Declaring it as an
+# expected cfg silences the default `unexpected_cfgs` warn on normal
+# builds without disabling the lint everywhere.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Allows: pragmatic relaxations for a binding crate.
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+multiple_crate_versions = "allow"
+# pyo3 idioms collide with these lints. The conflict is well-known.
+needless_pass_by_value = "allow"
+trivially_copy_pass_by_ref = "allow"
+unused_self = "allow"
+missing_const_for_fn = "allow"
+# nursery: a custom Debug impl that hides large internal state is a feature.
+missing_fields_in_debug = "allow"
+# nursery: false positives when a guard is intentionally held over multiple ops.
+significant_drop_tightening = "allow"
+# nursery: stylistic; let-else is fine but if-let with explicit body is clearer
+# in mixed Result/Option chains.
+option_if_let_else = "allow"
+# nursery: pub(crate) on items inside a private module is the right way to
+# share them with sibling modules (which need explicit visibility).
+redundant_pub_crate = "allow"
+# nursery: stylistic; let-else can be uglier when handling an else-arm with
+# control flow.
+manual_let_else = "allow"
+# pedantic: noisy on `u64 -> usize` for memory offsets where 64-bit targets are
+# the only ones we ship for. We promise not to ship on 32-bit; reverse the
+# stance if/when that changes.
+cast_possible_truncation = "allow"
+# pedantic: triggers on any function returning `Result<_, tonic::Status>`
+# (Status is ~176 bytes). We can't shrink Status; live with the larger Result.
+result_large_err = "allow"
+
+[workspace.dependencies]
+rayd-core = { path = "crates/rayd-core", version = "0.0.1" }
+rayd-gcs = { path = "crates/rayd-gcs", version = "0.0.1" }
+rayd-plasma = { path = "crates/rayd-plasma", version = "0.0.1" }
+rayd-raylet = { path = "crates/rayd-raylet", version = "0.0.1" }
+thiserror = "2"
+hex = "0.4"
+rand = "0.9"
+bincode = { version = "2", features = ["std", "derive"] }
+bytes = "1"
+parking_lot = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+prometheus = "0.13"
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time", "net", "signal"] }
+tonic = "0.12"
+tonic-build = "0.12"
+tonic-health = "0.12"
+prost = "0.13"
+prost-build = "0.13"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

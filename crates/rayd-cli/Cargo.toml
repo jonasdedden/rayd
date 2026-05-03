@@ -1,0 +1,23 @@
+[package]
+name = "rayd-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "CLI utilities for rayd: standalone plasma server, version, diagnostics."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rayd"
+path = "src/main.rs"
+
+[dependencies]
+rayd-core.workspace = true
+rayd-plasma.workspace = true
+rayd-gcs.workspace = true
+rayd-raylet.workspace = true
+tokio.workspace = true
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"

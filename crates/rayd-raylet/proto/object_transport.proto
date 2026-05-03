@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package rayd.raylet.object_transport.v1;
+
+// ObjectTransport: per-raylet gRPC for moving objects between nodes
+// and answering ownership-directory queries.
+//
+// Phase 3.4b ships Pull (read from local plasma + stream chunks),
+// RegisterObject (a peer reports it now holds a replica), and
+// GetObjectLocations (directory readback). Push streaming and the
+// driver-side wire-up land with 3.4c.
+service ObjectTransport {
+  // Stream chunks of an object from this raylet to the caller. The
+  // server emits one `ObjectMetadata` frame, then 1+ `Data` frames in
+  // order, then closes the stream.
+  rpc Pull(PullRequest) returns (stream PullChunk);
+
+  // Stream chunks INTO this raylet. Caller opens the stream, sends one
+  // `Header` frame followed by `Data` frames, then closes their half.
+  // The raylet seals into local plasma when the stream ends cleanly.
+  rpc Push(stream PushFrame) returns (PushReply);
+
+  // Record that `node_id` now holds a replica of `object_id`. Sent by
+  // a peer raylet after a successful Pull. The owner-raylet keeps the
+  // canonical directory; non-owner raylets MAY drop these idempotently.
+  rpc RegisterObject(RegisterObjectRequest) returns (RegisterObjectReply);
+
+  // Counterpart of `RegisterObject`: a peer no longer holds a replica
+  // of `object_id`. Sent on the borrower's last `ObjectRef` drop. The
+  // owner-raylet removes the entry from its directory and from its
+  // owner-side reference counter; if that clears the last borrower
+  // and the local count is also zero, the owner frees the object.
+  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
+
+  // Authoritative ownership-directory query: ask the owner-raylet which
+  // nodes currently hold copies of `object_id`. Replied to only by the
+  // owner; non-owners return `FailedPrecondition`.
+  rpc GetObjectLocations(GetObjectLocationsRequest) returns (GetObjectLocationsReply);
+
+  // Phase 4.3.3c: directed eviction. The OWNER's raylet calls this on
+  // each peer that is registered as a borrower once the owner-side
+  // reference count clears. Peers drop the local plasma copy AND the
+  // spill record (if any). Idempotent — duplicate Evicts are
+  // intentional retries-on-Unavailable, not errors.
+  rpc Evict(EvictRequest) returns (EvictReply);
+}
+
+// ── Pull ───────────────────────────────────────────────────────────────
+
+message PullRequest {
+  // 28-byte ObjectId; matches `rayd-core::ObjectId::SIZE`.
+  bytes object_id = 1;
+}
+
+message PullChunk {
+  oneof kind {
+    ObjectMetadata meta = 1;
+    bytes data = 2;
+  }
+}
+
+message ObjectMetadata {
+  // User-defined metadata bytes (mirrors plasma's metadata field).
+  bytes metadata = 1;
+  // Total size in bytes of the data payload that will follow as `Data`
+  // chunks. Lets the caller pre-allocate.
+  uint64 data_size = 2;
+}
+
+// ── Push ───────────────────────────────────────────────────────────────
+
+message PushFrame {
+  oneof kind {
+    PushHeader header = 1;
+    bytes data = 2;
+  }
+}
+
+message PushHeader {
+  bytes object_id = 1;
+  bytes metadata = 2;
+  uint64 data_size = 3;
+}
+
+message PushReply {}
+
+// ── RegisterObject ────────────────────────────────────────────────────
+
+message RegisterObjectRequest {
+  bytes object_id = 1;
+  // 16-byte node id of the holder. The peer reporting "I have a replica."
+  bytes node_id = 2;
+}
+
+message RegisterObjectReply {}
+
+// ── WaitForRefRemoved ─────────────────────────────────────────────────
+
+message WaitForRefRemovedRequest {
+  bytes object_id = 1;
+  // 16-byte node id of the borrower whose last ref just dropped.
+  bytes node_id = 2;
+}
+
+message WaitForRefRemovedReply {}
+
+// ── GetObjectLocations ─────────────────────────────────────────────────
+
+message GetObjectLocationsRequest {
+  bytes object_id = 1;
+}
+
+message GetObjectLocationsReply {
+  // 16-byte node ids (server-assigned by the GCS). Empty if no replicas.
+  repeated bytes node_ids = 1;
+}
+
+// ── Evict ─────────────────────────────────────────────────────────────
+
+message EvictRequest {
+  // Batch-friendly: the owner may bundle multiple ids per RPC if it
+  // observes more than one transition simultaneously. Each id is
+  // 28 bytes (ObjectId::SIZE).
+  repeated bytes object_ids = 1;
+}
+
+message EvictReply {}

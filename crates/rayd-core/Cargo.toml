@@ -1,0 +1,52 @@
+[package]
+name = "rayd-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core domain types and runtime for rayd."
+
+[lints]
+workspace = true
+
+[features]
+default = ["otlp"]
+# OpenTelemetry OTLP/gRPC span exporter, gated on
+# `OTEL_EXPORTER_OTLP_ENDPOINT` at runtime. Default-on so
+# `pip install rayd` ships with it; users who want a slimmer build
+# can `--no-default-features`.
+otlp = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+    "dep:tokio",
+]
+
+[dependencies]
+thiserror.workspace = true
+hex.workspace = true
+rand.workspace = true
+bytes.workspace = true
+parking_lot.workspace = true
+rayd-plasma.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic"], optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
+# Detect tokio-runtime presence in `init_default_subscriber`. Both
+# entry points (rayd-cli, rayd-py) already pull tokio in via
+# downstream crates, so the marginal cost is zero.
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
+
+# Loom is cfg-gated: only compiled when `--cfg loom` is set, so it
+# doesn't add to normal test/build time. Run with:
+#   RUSTFLAGS="--cfg loom" cargo test --release loom_ -p rayd-core
+[target.'cfg(loom)'.dev-dependencies]
+loom = "0.7"

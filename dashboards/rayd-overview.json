@@ -1,0 +1,373 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "datasource", "uid": "grafana" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Every Prometheus metric rayd exposes across its four /metrics endpoints (GCS, raylet, plasma server, driver). Use the $instance variable to scope to one component when running multi-node.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "rayd repo",
+      "tooltip": "github.com/jonded94/ray-replacement",
+      "type": "link",
+      "url": "https://github.com/jonded94/ray-replacement"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Cluster health  ·  rayd-gcs",
+      "type": "row"
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Nodes alive",
+      "description": "rayd_gcs_nodes_alive — currently in Alive status (Drain or sweeper-Dead drop these).",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_gcs_nodes_alive{instance=~\"$instance\"})", "refId": "A", "legendFormat": "alive" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Nodes total (this session)",
+      "description": "rayd_gcs_nodes_total — every node the GCS has ever seen this session, regardless of status. Resets on GCS restart.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_gcs_nodes_total{instance=~\"$instance\"})", "refId": "A", "legendFormat": "total" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Jobs running",
+      "description": "rayd_gcs_jobs_running — jobs currently in JOB_STATUS_RUNNING.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_gcs_jobs_running{instance=~\"$instance\"})", "refId": "A", "legendFormat": "running" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Named actors",
+      "description": "rayd_gcs_actors_total — entries in the GCS named-actor directory.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_gcs_actors_total{instance=~\"$instance\"})", "refId": "A", "legendFormat": "actors" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "GCS RPC rate",
+      "description": "Per-second rate of Register / Heartbeat RPCs and broadcast WatchNodes events. Heartbeats dominate at steady state.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_gcs_heartbeat_received_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "heartbeats/s" },
+        { "expr": "rate(rayd_gcs_register_node_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "B", "legendFormat": "registers/s" },
+        { "expr": "rate(rayd_gcs_watch_events_published_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "C", "legendFormat": "watch events/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Node-status sweeper outcome",
+      "description": "Derived: register events equal alive transitions; watch events ≥ register because Drain and sweeper-Dead also publish. The gap is the rate of cluster-topology disturbance.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_gcs_watch_events_published_total{instance=~\"$instance\"}[$__rate_interval]) - rate(rayd_gcs_register_node_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "drain+dead events/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 60 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "panels": [],
+      "title": "Object transport  ·  rayd-raylet",
+      "type": "row"
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Raylet RPC rate",
+      "description": "Pull / Push / RegisterObject / GetObjectLocations per second. Pull/Push dominate during real workloads.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_raylet_pull_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "pull/s" },
+        { "expr": "rate(rayd_raylet_push_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "B", "legendFormat": "push/s" },
+        { "expr": "rate(rayd_raylet_register_object_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "C", "legendFormat": "register_object/s" },
+        { "expr": "rate(rayd_raylet_get_object_locations_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "D", "legendFormat": "get_object_locations/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Spill restores / sec",
+      "description": "rayd_raylet_spill_restore_total — successful spill-backend restores triggered by a Pull miss. A non-zero rate means objects are getting evicted from plasma and read back from disk.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_raylet_spill_restore_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "restores/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 30 }, "color": { "mode": "fixed", "fixedColor": "orange" }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Directory entries",
+      "description": "rayd_raylet_directory_entries — (object_id → node_ids) entries the local raylet currently tracks.",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_raylet_directory_entries{instance=~\"$instance\"})", "refId": "A", "legendFormat": "entries" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 10,
+      "type": "gauge",
+      "title": "NodeIndex fast-path hit ratio",
+      "description": "Hit / (hit+miss) for the WatchNodes-driven owner-liveness lookup (Phase 4.3.3c-F). Should be ≥ 99% at steady state; sustained dips suggest the subscriber is missing events or restarting cold.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rate(rayd_node_index_status_lookups_total{outcome=\"hit\",instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(rayd_node_index_status_lookups_total{instance=~\"$instance\"}[$__rate_interval])), 1e-9)", "refId": "A", "legendFormat": "hit ratio" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 0.9 }, { "color": "green", "value": 0.99 } ] }, "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": false, "showThresholdMarkers": true }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "NodeIndex lookups by outcome",
+      "description": "rayd_node_index_status_lookups_total{outcome=hit|miss}. Misses fall back to a synchronous list_nodes() RPC.",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_node_index_status_lookups_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "{{outcome}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 30 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "id": 102,
+      "panels": [],
+      "title": "Object store  ·  rayd-plasma",
+      "type": "row"
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Plasma arena bytes",
+      "description": "rayd_plasma_arena_bytes_used vs rayd_plasma_arena_bytes_total. Used approaching total triggers spill-on-pressure on the driver side.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rayd_plasma_arena_bytes_total{instance=~\"$instance\"}", "refId": "A", "legendFormat": "total · {{instance}}" },
+        { "expr": "rayd_plasma_arena_bytes_used{instance=~\"$instance\"}", "refId": "B", "legendFormat": "used · {{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20 }, "unit": "decbytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Plasma RPC rate",
+      "description": "Create (sealed-into-plasma) / Get / Delete per second.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_plasma_create_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "create/s" },
+        { "expr": "rate(rayd_plasma_get_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "B", "legendFormat": "get/s" },
+        { "expr": "rate(rayd_plasma_delete_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "C", "legendFormat": "delete/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Objects in plasma",
+      "description": "rayd_plasma_objects_total — sealed objects currently resident in the local plasma arena.",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 35 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_plasma_objects_total{instance=~\"$instance\"})", "refId": "A", "legendFormat": "objects" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 15,
+      "type": "gauge",
+      "title": "Plasma utilization",
+      "description": "used / total. ≥ RAYD_SPILL_THRESHOLD (default 75%) triggers spill-on-pressure.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 35 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_plasma_arena_bytes_used{instance=~\"$instance\"}) / clamp_min(sum(rayd_plasma_arena_bytes_total{instance=~\"$instance\"}), 1)", "refId": "A", "legendFormat": "used %" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.75 }, { "color": "red", "value": 0.95 } ] }, "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": false, "showThresholdMarkers": true }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "id": 103,
+      "panels": [],
+      "title": "Driver activity  ·  rayd-py",
+      "type": "row"
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Task lifecycle / sec",
+      "description": "Submitted = submit_task() accepted. Completed = dispatcher saw a value-return frame. Failed = dispatcher saw an error frame.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_driver_tasks_submitted_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "submitted/s" },
+        { "expr": "rate(rayd_driver_tasks_completed_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "B", "legendFormat": "completed/s" },
+        { "expr": "rate(rayd_driver_tasks_failed_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "C", "legendFormat": "failed/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "rayd.put / rayd.get / sec",
+      "description": "Driver-side put/get call rate. get includes both rayd.get and rayd.get_settled.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(rayd_driver_puts_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "A", "legendFormat": "puts/s" },
+        { "expr": "rate(rayd_driver_gets_total{instance=~\"$instance\"}[$__rate_interval])", "refId": "B", "legendFormat": "gets/s" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "ops" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Live ObjectRefs",
+      "description": "rayd_driver_refs_alive — distinct ObjectIds the local RefCounter currently tracks (any kind of pin: local, borrower, submit-dep). Read at scrape time from the live counter.",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rayd_driver_refs_alive{instance=~\"$instance\"})", "refId": "A", "legendFormat": "alive" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] }, "unit": "none" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Task failure ratio",
+      "description": "failed / (completed + failed). Sustained > 0 means tasks are crashing — drill into rayd-py logs.",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 48 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "sum(rate(rayd_driver_tasks_failed_total{instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(rayd_driver_tasks_completed_total{instance=~\"$instance\"}[$__rate_interval])) + sum(rate(rayd_driver_tasks_failed_total{instance=~\"$instance\"}[$__rate_interval])), 1e-9)", "refId": "A", "legendFormat": "failure ratio" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 30 }, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.1 } ] }, "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["rayd"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values({__name__=~\"rayd_.*\"}, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Instance",
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": { "qryType": 1, "query": "label_values({__name__=~\"rayd_.*\"}, instance)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "rayd · cluster overview",
+  "uid": "rayd-overview",
+  "version": 1,
+  "weekStart": ""
+}

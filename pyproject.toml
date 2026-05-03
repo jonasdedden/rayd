@@ -1,0 +1,96 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rayd"
+version = "0.0.1"
+description = "A Rust+PyO3 reimplementation of Ray Core (tasks, actors, distributed object store)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "ray-replacement contributors" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: System :: Distributed Computing",
+]
+# Runtime deps (also pulled in by the spawned `rayd._worker` subprocess).
+dependencies = [
+    "cloudpickle>=3.0",
+]
+
+[dependency-groups]
+# Dev dependencies installed via `uv sync --group dev`.
+dev = [
+    "maturin>=1.7,<2.0",
+    "mypy>=1.13",
+    "ruff>=0.7",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.maturin]
+manifest-path = "crates/rayd-py/Cargo.toml"
+module-name = "rayd._native"
+python-source = "python"
+features = ["pyo3/extension-module"]
+include = [
+    { path = "python/rayd/*.pyi", format = "wheel" },
+    { path = "python/rayd/py.typed", format = "wheel" },
+]
+
+# ── mypy ─────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+strict = true
+disallow_any_unimported = true
+disallow_any_explicit = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_unreachable = true
+files = ["python/rayd"]
+
+# ── ruff ─────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["python"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+# Project-wide ignores: rules that don't fit a typed PyO3 binding wrapper.
+ignore = [
+    # Documentation: we have docs/, not in-source extensive docstrings.
+    "D100", "D101", "D102", "D103", "D104", "D105", "D107",
+    "D203", "D213",  # incompatible with D211/D212 picks
+    # `assert` is fine in tests; the test-tree opts in below.
+    # `print` is fine in tutorials; we don't have any yet.
+    # COM812: trailing-comma — formatter handles this.
+    "COM812",
+    # ISC001: implicit string concat — formatter handles this.
+    "ISC001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*.pyi" = ["ALL"]                  # Generated stubs are reviewed by stubtest, not ruff.
+"python/rayd/tests/*.py" = [
+    "S101",  # assert in tests is fine.
+    "INP001", # tests don't need __init__.py per pytest's modern layout.
+    "PLR2004", # magic numbers in tests are fine.
+]
+"python/rayd/benches/*.py" = [
+    "T201",   # print is the whole CLI surface for benchmarks.
+    "PLR2004", # magic numbers (e.g. unit boundaries) are obvious here.
+    "S311",   # benchmark payloads pseudo-random; not crypto.
+]
+
+[tool.pytest.ini_options]
+testpaths = ["python/rayd/tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+filterwarnings = ["error"]

@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package rayd.gcs.job_info.v1;
+
+// JobRegistry: cluster-wide tracking of active jobs (one per `rayd.init()`
+// session). Mirrors the shape of `NodeRegistry`: in-memory in Phase 3.3b,
+// durable + reapable in later phases.
+service JobRegistry {
+  rpc AddJob(AddJobRequest) returns (AddJobReply);
+
+  rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
+
+  // Snapshot all jobs the GCS knows about (running or finished).
+  rpc List(ListJobsRequest) returns (ListJobsReply);
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_RUNNING = 1;
+  JOB_STATUS_FINISHED = 2;
+  JOB_STATUS_FAILED = 3;
+}
+
+message JobInfo {
+  bytes job_id = 1;
+  // Hostname or IP literal where the driver process lives.
+  string driver_host = 2;
+  uint32 driver_pid = 3;
+  // The 16-byte node id the driver registered against, if any.
+  bytes node_id = 4;
+  JobStatus status = 5;
+  uint64 registered_at_unix_ms = 6;
+  // Zero unless `status` is `FINISHED` or `FAILED`.
+  uint64 finished_at_unix_ms = 7;
+}
+
+message AddJobRequest {
+  string driver_host = 1;
+  uint32 driver_pid = 2;
+  bytes node_id = 3;  // optional; may be empty/16 zero bytes.
+}
+
+message AddJobReply {
+  bytes job_id = 1;
+}
+
+message MarkJobFinishedRequest {
+  bytes job_id = 1;
+  // Zero or more bytes of human-readable failure context. Empty means
+  // graceful finish (`JOB_STATUS_FINISHED`); non-empty switches to
+  // `JOB_STATUS_FAILED` and stores the message on the job.
+  string failure_message = 2;
+}
+
+message MarkJobFinishedReply {}
+
+message ListJobsRequest {}
+
+message ListJobsReply {
+  repeated JobInfo jobs = 1;
+}

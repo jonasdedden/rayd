@@ -1,0 +1,33 @@
+[package]
+name = "rayd-raylet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Per-node daemon for rayd: serves object Pull/Push and ownership directory."
+
+[lints]
+workspace = true
+
+[dependencies]
+rayd-core.workspace = true
+rayd-gcs.workspace = true
+rayd-plasma.workspace = true
+prost.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+prometheus.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tokio-stream = "0.1"
+parking_lot.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+bytes.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[dev-dependencies]
+rayd-plasma.workspace = true
+tempfile = "3"
