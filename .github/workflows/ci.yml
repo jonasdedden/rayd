@@ -18,6 +18,14 @@ env:
   RUSTFLAGS: -D warnings
   # Tested target for tests + the only abi3 floor we ship (PyO3 abi3-py312).
   PYTHON_VERSION: "3.12"
+  # GitHub deprecates Node.js 20 on Actions runners (forced to Node 24
+  # on 2026-06-02, fully removed 2026-09-16). This env var opts the
+  # whole workflow into Node 24 immediately, so any action that hasn't
+  # published a Node-24-native major yet still runs on 24 instead of
+  # printing a "may not work as expected" warning every job. Safe to
+  # remove once all `uses:` versions in this file are confirmed Node-24
+  # native (which is the long-term fix; this is the safety net).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ──────────────────────────────────────────────────────────────────
@@ -28,7 +36,7 @@ jobs:
     name: rust · fmt + clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -55,7 +63,7 @@ jobs:
     name: rust · cargo test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: arduino/setup-protoc@v3
         with:
@@ -83,7 +91,7 @@ jobs:
       # tracing-opentelemetry tree below.
       RUSTFLAGS: --cfg loom
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: arduino/setup-protoc@v3
         with:
@@ -106,7 +114,7 @@ jobs:
     name: python · lint + typecheck + tests + stubs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: arduino/setup-protoc@v3
         with:
@@ -114,10 +122,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: python-ext
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - name: Install dev deps
@@ -164,7 +172,14 @@ jobs:
   # ──────────────────────────────────────────────────────────────────
   # Wheel build: validates `maturin build --release` produces an
   # importable wheel that contains the .pyi stub and py.typed marker.
-  # Linux + macOS to cover both classifier platforms in pyproject.
+  #
+  # Per-PR matrix is Linux-only on purpose: GitHub Actions bills macOS
+  # runners at 10× the included-minute rate, so a 5-minute mac wheel
+  # build costs as much as ~50 minutes of Linux. macOS coverage moves
+  # to `release.yml`, which only runs on `git tag v*` — that's the
+  # right place to validate the macOS artifact end-to-end without
+  # paying the 10× tax on every push. If a CI failure is mac-specific,
+  # cut a `v0.0.0-rc-test` tag to trigger the release workflow.
   # ──────────────────────────────────────────────────────────────────
   wheel:
     name: wheel · ${{ matrix.os }}
@@ -172,9 +187,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: arduino/setup-protoc@v3
         with:
@@ -182,10 +197,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: wheel-${{ matrix.os }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - name: Install dev deps (for maturin)

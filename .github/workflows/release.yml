@@ -23,6 +23,9 @@ env:
   # Single abi3 floor — same wheel works on CPython ≥ 3.12. Driven by
   # the PyO3 `abi3-py312` feature in crates/rayd-py/Cargo.toml.
   PYTHON_VERSION: "3.12"
+  # Opt the workflow into Node.js 24 for any js-action that hasn't
+  # published a Node-24-native major yet. See ci.yml for context.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ──────────────────────────────────────────────────────────────────
@@ -39,10 +42,10 @@ jobs:
       matrix:
         target: [x86_64, aarch64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Sync workspace + pyproject version to tag
@@ -80,10 +83,10 @@ jobs:
           - target: aarch64
             runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - uses: arduino/setup-protoc@v3
@@ -110,10 +113,10 @@ jobs:
     name: sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Sync workspace + pyproject version to tag
@@ -146,7 +149,7 @@ jobs:
           merge-multiple: true
       - name: List artifacts
         run: ls -la dist/
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install packaging (for PEP 440 version comparison)
