@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel in-progress runs on the same ref/PR when a new push lands. Saves
+# CI minutes when developers push corrections in quick succession.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Match what the workspace clippy lints expect locally.
+  RUSTFLAGS: -D warnings
+  # Tested target for tests + the only abi3 floor we ship (PyO3 abi3-py312).
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Rust: formatting + clippy. Fast (~1-2 min on cache hit) and
+  # blocks merge on any warning thanks to the workspace `RUSTFLAGS`.
+  # ──────────────────────────────────────────────────────────────────
+  rust-fmt-clippy:
+    name: rust · fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ──────────────────────────────────────────────────────────────────
+  # Rust: workspace test suite. Runs serial (--test-threads=1) because
+  # several integration tests bind to ephemeral ports and benefit from
+  # not racing each other on the same runner.
+  # ──────────────────────────────────────────────────────────────────
+  rust-test:
+    name: rust · cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust
+      - run: cargo test --workspace --no-run --locked
+      - run: cargo test --workspace --locked -- --test-threads=1 --nocapture
+
+  # ──────────────────────────────────────────────────────────────────
+  # Loom: cfg-gated concurrency tests on `RefCounter`. Builds release
+  # profile (per the test guide in the source) so cache key is
+  # distinct from the dev-profile cargo cache used elsewhere.
+  # ──────────────────────────────────────────────────────────────────
+  rust-loom:
+    name: rust · loom
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: --cfg loom
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: loom
+      - run: cargo test --release loom_ -p rayd-core --lib
+
+  # ──────────────────────────────────────────────────────────────────
+  # Python: lint, typecheck, build extension, regenerate stubs and
+  # diff against the committed copy, run pytest. Bundled into one job
+  # so the maturin develop step is paid once.
+  # ──────────────────────────────────────────────────────────────────
+  python:
+    name: python · lint + typecheck + tests + stubs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: python-ext
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Install dev deps
+        run: uv sync --group dev
+      - name: Build native extension (debug, editable)
+        run: uv run maturin develop --uv
+      - name: Verify committed stubs match generator output
+        run: |
+          # `make stubs` regenerates _native.pyi via cargo run --bin stub_gen
+          # plus tools/fix_stubs.py. The committed copy must match — if
+          # not, the developer forgot to run `make stubs` after touching
+          # a pyfunction signature.
+          cp python/rayd/_native.pyi python/rayd/_native.pyi.committed
+          make stubs
+          if ! diff -u python/rayd/_native.pyi.committed python/rayd/_native.pyi; then
+            echo "::error::Committed stubs are stale. Run 'make stubs' locally and commit the result."
+            exit 1
+          fi
+      - run: uv run ruff format --check python
+      - run: uv run ruff check python
+      - run: uv run mypy
+      - run: uv run pytest --maxfail=1 -q
+
+  # ──────────────────────────────────────────────────────────────────
+  # Wheel build: validates `maturin build --release` produces an
+  # importable wheel that contains the .pyi stub and py.typed marker.
+  # Linux + macOS to cover both classifier platforms in pyproject.
+  # ──────────────────────────────────────────────────────────────────
+  wheel:
+    name: wheel · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wheel-${{ matrix.os }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Install dev deps (for maturin)
+        run: uv sync --group dev
+      # The stubs are generated locally and committed; the wheel's
+      # own build step copies them in via [tool.maturin.include] in
+      # pyproject.toml. Build a release wheel and verify the bundle.
+      - name: Build release wheel
+        run: uv run maturin build --release --out dist
+      - name: Verify wheel includes pyi + py.typed
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(ls dist/*.whl | head -1)
+          echo "Inspecting $wheel"
+          # `unzip -l` works on both Linux + macOS runners.
+          unzip -l "$wheel"
+          unzip -l "$wheel" | grep -q "rayd/_native.pyi" \
+            || (echo "::error::wheel missing _native.pyi"; exit 1)
+          unzip -l "$wheel" | grep -q "rayd/py.typed" \
+            || (echo "::error::wheel missing py.typed"; exit 1)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────
+  # Aggregator: a single required check for branch-protection rules,
+  # so we don't have to keep the protected-checks list in sync with
+  # job names.
+  # ──────────────────────────────────────────────────────────────────
+  ci:
+    name: ci
+    if: always()
+    needs: [rust-fmt-clippy, rust-test, rust-loom, python, wheel]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "All required jobs passed."

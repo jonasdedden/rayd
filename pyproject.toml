@@ -4,7 +4,13 @@ build-backend = "maturin"
 
 [project]
 name = "rayd"
-version = "0.0.1"
+# Single source of truth lives in `[workspace.package].version` in
+# the root Cargo.toml. Maturin reads the Cargo workspace version and
+# stamps it into the wheel + sdist filenames; declaring `version` as
+# dynamic here keeps PEP 621 happy without forcing us to duplicate.
+# The release workflow rewrites the Cargo version from the git tag
+# before building so `vX.Y.Z` produces `rayd-X.Y.Z-...whl`.
+dynamic = ["version"]
 description = "A Rust+PyO3 reimplementation of Ray Core (tasks, actors, distributed object store)"
 readme = "README.md"
 requires-python = ">=3.10"

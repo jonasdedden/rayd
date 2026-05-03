@@ -1,0 +1,255 @@
+name: Release
+
+# Triggered by pushing an annotated tag matching `v*` (e.g. v0.1.0,
+# v0.2.0-rc1). Also exposes a `workflow_dispatch` button so a
+# release-engineer can rebuild artifacts for an existing tag without
+# re-pushing it (useful when a runner died mid-matrix).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref / tag to build (e.g. v0.1.0)"
+        required: true
+        type: string
+
+# Cancel a duplicate run targeting the same tag (e.g. tag re-pushed).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Single abi3 floor — same wheel works on CPython ≥ 3.12. Driven by
+  # the PyO3 `abi3-py312` feature in crates/rayd-py/Cargo.toml.
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Linux: manylinux2014 base (glibc 2.17) — covers CentOS 7+, Ubuntu
+  # 18.04+, Debian 10+. PyO3/maturin-action runs maturin inside the
+  # appropriate manylinux container so the wheel auditwheel-tag is
+  # set correctly.
+  # ──────────────────────────────────────────────────────────────────
+  linux:
+    name: linux · ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Sync workspace + pyproject version to tag
+        run: python3 tools/set_version_from_tag.py "${{ inputs.ref || github.ref }}"
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: "2014"
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────
+  # macOS: x86_64 (Intel) + arm64 (Apple Silicon). The `macos-13`
+  # runner is x86_64, `macos-latest` (currently macos-14) is arm64.
+  # ──────────────────────────────────────────────────────────────────
+  macos:
+    name: macos · ${{ matrix.target }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+            runs-on: macos-13
+          - target: aarch64
+            runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Sync workspace + pyproject version to tag
+        run: python3 tools/set_version_from_tag.py "${{ inputs.ref || github.ref }}"
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}-apple-darwin
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────
+  # Source distribution. Platform-independent, but we run on Linux
+  # for fastest spin-up. Same artifact contains the sdist tarball.
+  # ──────────────────────────────────────────────────────────────────
+  sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Sync workspace + pyproject version to tag
+        run: python3 tools/set_version_from_tag.py "${{ inputs.ref || github.ref }}"
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────
+  # Sanity-check every produced wheel still contains the .pyi stub
+  # and py.typed marker (same invariant as the CI workflow). Catches
+  # a regression of [tool.maturin].include before the artifact lands
+  # on the GitHub Release page.
+  # ──────────────────────────────────────────────────────────────────
+  verify:
+    name: verify wheels
+    needs: [linux, macos, sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la dist/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install packaging (for PEP 440 version comparison)
+        run: pip install packaging
+      - name: Verify each wheel includes pyi + py.typed and version matches tag
+        shell: bash
+        env:
+          REF: ${{ inputs.ref || github.ref }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re, sys, zipfile
+          from packaging.version import Version, InvalidVersion
+
+          tag = os.environ["REF"].removeprefix("refs/tags/")
+          m = re.match(r"^v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?)$", tag)
+          if not m:
+              sys.exit(f"::error::tag {tag!r} does not match vMAJOR.MINOR.PATCH[-pre]")
+          expected = Version(m.group(1))
+          print(f"Expecting all artifacts to carry version {expected}")
+
+          # Wheel filename: <distribution>-<version>-<python>-<abi>-<platform>.whl
+          # sdist filename: <distribution>-<version>.tar.gz
+          # PEP 440 normalises e.g. 0.5.0-rc1 → 0.5.0rc1 in filenames.
+          whl_re = re.compile(r"^rayd-([^-]+)-")
+          sdist_re = re.compile(r"^rayd-(.+)\.tar\.gz$")
+
+          dist = pathlib.Path("dist")
+          fail = False
+          for whl in sorted(dist.glob("*.whl")):
+              print(f"Checking {whl.name}")
+              m = whl_re.match(whl.name)
+              if not m:
+                  print(f"::error::cannot parse version out of {whl.name}"); fail = True; continue
+              try:
+                  got = Version(m.group(1))
+              except InvalidVersion as e:
+                  print(f"::error::{whl.name} version unparseable: {e}"); fail = True; continue
+              if got != expected:
+                  print(f"::error::{whl.name} version {got} != expected {expected}"); fail = True
+              with zipfile.ZipFile(whl) as zf:
+                  names = set(zf.namelist())
+                  if not any(n.endswith("rayd/_native.pyi") for n in names):
+                      print(f"::error::{whl.name} missing rayd/_native.pyi"); fail = True
+                  if not any(n.endswith("rayd/py.typed") for n in names):
+                      print(f"::error::{whl.name} missing rayd/py.typed"); fail = True
+
+          for sd in sorted(dist.glob("*.tar.gz")):
+              print(f"Checking {sd.name}")
+              m = sdist_re.match(sd.name)
+              if not m:
+                  print(f"::error::cannot parse version out of {sd.name}"); fail = True; continue
+              try:
+                  got = Version(m.group(1))
+              except InvalidVersion as e:
+                  print(f"::error::{sd.name} version unparseable: {e}"); fail = True; continue
+              if got != expected:
+                  print(f"::error::{sd.name} version {got} != expected {expected}"); fail = True
+
+          sys.exit(1 if fail else 0)
+          PY
+
+  # ──────────────────────────────────────────────────────────────────
+  # GitHub Release: attach every wheel + sdist as release assets.
+  # The release is created in `draft` mode by default — release-eng
+  # reviews the artifact list and publishes manually. Skips on a
+  # workflow_dispatch run because that's typically a re-build, not a
+  # re-publish.
+  # ──────────────────────────────────────────────────────────────────
+  github-release:
+    name: github release
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create draft release with attachments
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: true
+          generate_release_notes: true
+
+  # ──────────────────────────────────────────────────────────────────
+  # PyPI publish (trusted publishing). Disabled by default — uncomment
+  # AFTER configuring https://pypi.org/manage/account/publishing/ for
+  # this repo. Trusted publishing requires no API token: PyPI verifies
+  # the OIDC token GitHub mints and matches it against the configured
+  # repo + workflow + environment triple.
+  # ──────────────────────────────────────────────────────────────────
+  # pypi:
+  #   name: publish to PyPI
+  #   needs: verify
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: pypi
+  #     url: https://pypi.org/p/rayd
+  #   permissions:
+  #     id-token: write   # OIDC token for trusted publishing
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         path: dist
+  #         merge-multiple: true
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         packages-dir: dist
+  #         skip-existing: true
