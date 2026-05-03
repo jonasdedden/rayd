@@ -1,15 +1,38 @@
-//! Arena allocator backed by a `memfd` + `mmap`.
+//! Arena allocator backed by an anonymous file + `mmap`.
 //!
-//! Phase 2 design: a single arena per server, bump-allocated. Eviction and
-//! multi-arena pools land in later phases.
+//! Phase 2 design: a single arena per server, bump-allocated. Eviction
+//! and multi-arena pools land in later phases.
+//!
+//! Cross-platform anonymous-fd story:
+//! - **Linux**: `memfd_create(MFD_CLOEXEC)` returns a fresh anonymous
+//!   fd backed by tmpfs. The fd has no filesystem name; it's passed
+//!   to peer processes via `SCM_RIGHTS` and they can mmap it directly.
+//! - **macOS** (and other non-Linux unix): `memfd_create` doesn't exist.
+//!   We use the POSIX `shm_open` + immediate `shm_unlink` idiom: open a
+//!   uniquely-named segment with `O_CREAT|O_EXCL|O_RDWR|O_CLOEXEC`,
+//!   then unlink the name right away. The fd remains valid and can be
+//!   passed via `SCM_RIGHTS` exactly like a memfd; the name is gone
+//!   so concurrent processes don't collide and `/dev/shm` doesn't
+//!   leak entries on crash.
 
 use std::ffi::CString;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 
 use memmap2::{MmapMut, MmapOptions};
-use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
 use parking_lot::Mutex;
 use thiserror::Error;
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+use nix::{
+    fcntl::OFlag,
+    sys::{
+        mman::{shm_open, shm_unlink},
+        stat::Mode,
+    },
+};
 
 use crate::OBJECT_ALIGN;
 
@@ -35,6 +58,56 @@ pub enum ArenaError {
     InvalidName(String),
 }
 
+/// Create an anonymous fd suitable for `mmap` + `SCM_RIGHTS` handoff.
+///
+/// On Linux this is a one-shot `memfd_create`. On macOS we use the
+/// POSIX-shm + immediate-unlink idiom — same end result, the name
+/// just briefly appears in the shm namespace before we delete it.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn create_anon_fd(cname: &std::ffi::CStr, _id: u64) -> Result<OwnedFd, ArenaError> {
+    Ok(memfd_create(cname, MemFdCreateFlag::MFD_CLOEXEC)?)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn create_anon_fd(_cname: &std::ffi::CStr, _id: u64) -> Result<OwnedFd, ArenaError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // POSIX shm names are filesystem-visible and shared across the
+    // host. macOS additionally caps `PSHMNAMLEN` at 31 chars
+    // (including the leading `/` and null terminator), so the format
+    // below is deliberately compact. `pid` (≤8 hex chars) plus a
+    // process-local counter (≤16 hex chars) gives system-wide
+    // uniqueness in 4 + 8 + 1 + 16 = 29 chars, comfortably under
+    // the limit even at the pathological end of the counter range.
+    // The caller's `name` is informational only on Linux's memfd —
+    // dropped here.
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let unique = format!("/rd-{pid:x}-{counter:x}");
+    let cunique =
+        CString::new(unique.clone()).map_err(|_| ArenaError::InvalidName(unique.clone()))?;
+
+    let fd = shm_open(
+        cunique.as_c_str(),
+        OFlag::O_CREAT | OFlag::O_EXCL | OFlag::O_RDWR | OFlag::O_CLOEXEC,
+        Mode::from_bits_truncate(0o600),
+    )?;
+    // Best-effort: unlink the name so the segment becomes anonymous
+    // (the open fd keeps the storage alive). If unlink fails the
+    // segment still works for this process — the only consequence is
+    // a stale entry in the shm namespace until the host reboots, so
+    // we log and proceed rather than failing the open.
+    if let Err(e) = shm_unlink(cunique.as_c_str()) {
+        tracing::warn!(
+            error = %e,
+            name = %unique,
+            "rayd-plasma: shm_unlink after shm_open failed; segment will leak by name"
+        );
+    }
+    Ok(fd)
+}
+
 /// One mmap-backed memfd region. Cheap to clone via `Arc` because the arena
 /// itself is `!Clone`; users hold an `Arc<Arena>`.
 #[derive(Debug)]
@@ -54,7 +127,7 @@ impl Arena {
     /// fd happens on `as_borrowed` and during `SCM_RIGHTS` transfers.
     pub fn create(id: u64, capacity: u64, name: &str) -> Result<Self, ArenaError> {
         let cname = CString::new(name).map_err(|_| ArenaError::InvalidName(name.to_owned()))?;
-        let fd: OwnedFd = memfd_create(&cname, MemFdCreateFlag::MFD_CLOEXEC)?;
+        let fd: OwnedFd = create_anon_fd(&cname, id)?;
 
         // Cast capacity to off_t (i64 on Linux/macOS).
         let off =

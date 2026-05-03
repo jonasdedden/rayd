@@ -179,8 +179,7 @@ fn parse_id(bytes: &[u8], name: &str) -> Result<[u8; 16], Status> {
 fn unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 fn hex_short(bytes: &[u8; 16]) -> String {

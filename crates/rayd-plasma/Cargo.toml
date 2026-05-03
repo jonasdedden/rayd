@@ -17,7 +17,11 @@ parking_lot.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 prometheus.workspace = true
-nix = { version = "0.29", features = ["socket", "uio", "fs"] }
+# `socket`+`uio` for the SCM_RIGHTS handoff; `fs` for `memfd_create`
+# on Linux; `mman` for `shm_open`/`shm_unlink` on macOS (which lacks
+# `memfd_create` and uses POSIX shm + immediate-unlink as the
+# anonymous-fd substrate).
+nix = { version = "0.29", features = ["socket", "uio", "fs", "mman"] }
 memmap2 = "0.9"
 
 [dev-dependencies]
