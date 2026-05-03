@@ -126,12 +126,14 @@ jobs:
         run: uv run maturin develop --uv
       - name: Verify committed stubs match generator output
         run: |
-          # `make stubs` regenerates _native.pyi via cargo run --bin stub_gen
-          # plus tools/fix_stubs.py. The committed copy must match — if
-          # not, the developer forgot to run `make stubs` after touching
-          # a pyfunction signature.
+          # `make stubs-only` regenerates _native.pyi from the already-
+          # built cdylib (the previous step ran `maturin develop`).
+          # Calling `make stubs` instead would re-invoke `maturin
+          # develop` redundantly. The committed copy must match — if
+          # not, the developer forgot to run `make stubs` after
+          # touching a pyfunction signature.
           cp python/rayd/_native.pyi python/rayd/_native.pyi.committed
-          make stubs
+          make stubs-only
           if ! diff -u python/rayd/_native.pyi.committed python/rayd/_native.pyi; then
             echo "::error::Committed stubs are stale. Run 'make stubs' locally and commit the result."
             exit 1
@@ -174,12 +176,19 @@ jobs:
         with:
           enable-cache: true
       - name: Install dev deps (for maturin)
-        run: uv sync --group dev
+        # `--no-install-project` keeps `uv sync` from doing an
+        # editable build of rayd as a side effect. We only want
+        # `maturin` on PATH for the next step; the actual rayd
+        # build happens once, via `maturin build --release` below.
+        # Without this flag, uv invokes `maturin develop` here
+        # (debug profile, ~1 min) and then we build AGAIN in
+        # release — doubling wheel-job runtime for no benefit.
+        run: uv sync --group dev --no-install-project
       # The stubs are generated locally and committed; the wheel's
       # own build step copies them in via [tool.maturin.include] in
       # pyproject.toml. Build a release wheel and verify the bundle.
       - name: Build release wheel
-        run: uv run maturin build --release --out dist
+        run: uv run --no-sync maturin build --release --out dist
       - name: Verify wheel includes pyi + py.typed
         shell: bash
         run: |

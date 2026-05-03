@@ -4,7 +4,7 @@
 VENV_BIN := .venv/bin
 PYTHON := $(VENV_BIN)/python
 
-.PHONY: venv build stubs stubtest test lint check clean bench
+.PHONY: venv build stubs stubs-only stubtest test lint check clean bench
 
 venv:
 	uv venv
@@ -13,9 +13,22 @@ venv:
 build:
 	uv run maturin develop --uv
 
-stubs: build
+# Regenerate `_native.pyi` from the *already-built* cdylib. Doesn't
+# depend on `build` so CI (which builds explicitly in a separate
+# step) can call this without re-invoking `maturin develop`. Local
+# users want `make stubs`, which chains `build` + `stubs-only`.
+#
+# `cargo run --bin stub_gen` is intentionally NOT `--release`: the
+# binary is invoked once per regeneration and reusing the dev-profile
+# dep tree from the prior `maturin develop` saves ~50 s vs. building
+# the workspace a second time in release mode.
+#
+# `.venv/bin/...` invocations bypass `uv run`'s editable-project
+# resync, which would otherwise reinstall rayd between every step
+# even though nothing changed.
+stubs-only:
 	RAYD_CDYLIB_PATH=$(shell .venv/bin/python -c 'import rayd._native, pathlib; print(rayd._native.__file__)') \
-	    cargo run --bin stub_gen --release
+	    cargo run --bin stub_gen
 	$(PYTHON) tools/fix_stubs.py python/rayd/_native.pyi
 	# Splice runtime docstrings (from Rust doc comments captured as
 	# `__doc__`) into the stub so IDEs and `help()` and the .pyi all
@@ -28,7 +41,9 @@ stubs: build
 	# stubs-freshness diff fails on whitespace-only deltas (multi-line
 	# function signatures, `str | None` spacing, etc.) that pyo3-stub-gen
 	# produces but `ruff format` would normalise.
-	uv run ruff format python/rayd/_native.pyi
+	$(VENV_BIN)/ruff format python/rayd/_native.pyi
+
+stubs: build stubs-only
 
 test: build
 	cargo test --workspace
