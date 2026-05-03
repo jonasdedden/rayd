@@ -1,0 +1,16 @@
+# Auto-load any dashboard JSON dropped under /var/lib/grafana/dashboards.
+# The compose file mounts the committed `rayd-overview.json` there.
+
+apiVersion: 1
+
+providers:
+  - name: rayd
+    orgId: 1
+    folder: rayd
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

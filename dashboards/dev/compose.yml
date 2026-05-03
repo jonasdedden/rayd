@@ -1,0 +1,52 @@
+# Local-only Prometheus + Grafana for dashboard development.
+#
+# `network_mode: host` so both containers can reach the rayd
+# processes running on the host's loopback (gcs/raylet/plasma/driver
+# `/metrics` endpoints). No published ports needed — Prometheus binds
+# 9090 and Grafana binds 3000 on the host directly.
+#
+# Anonymous Grafana login is enabled: zero-friction access at
+# http://localhost:3000 (no credentials prompt). Don't run this
+# compose file on a shared / production host.
+
+services:
+  prometheus:
+    # Fully qualified registry name (`docker.io/...`) so Podman works
+    # out of the box. Docker would happily resolve the short name
+    # `prom/prometheus:...`; Podman requires either an entry in
+    # `/etc/containers/registries.conf` or the full path. Same for
+    # Grafana below — kept consistent for clarity.
+    image: docker.io/prom/prometheus:v2.55.1
+    container_name: rayd-dev-prometheus
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.listen-address=:9090"
+      # Short retention so leftover dev data doesn't pile up.
+      - "--storage.tsdb.retention.time=2h"
+      - "--storage.tsdb.path=/prometheus"
+
+  grafana:
+    image: docker.io/grafana/grafana:11.3.1
+    container_name: rayd-dev-grafana
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SERVER_HTTP_PORT: "3000"
+      # Auto-login as Admin so the dashboard opens without a prompt.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Skip the "Welcome to Grafana" splash on first load.
+      GF_USERS_DEFAULT_THEME: "dark"
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      # The committed dashboard JSON references its datasource via
+      # `${DS_PROMETHEUS}`. Provisioning resolves that against the
+      # datasource we configure below (uid: prometheus).
+      - ../rayd-overview.json:/var/lib/grafana/dashboards/rayd-overview.json:ro

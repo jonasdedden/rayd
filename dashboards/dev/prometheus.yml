@@ -1,0 +1,42 @@
+global:
+  # Tight scrape interval so dev panels respond quickly to
+  # workload changes. Production would use 15-30s.
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+# Every scrape target carries a `rayd_cluster` label so the
+# dashboard's `$rayd_cluster` variable can scope multi-rayd-cluster
+# deployments. The `rayd_` prefix avoids colliding with the generic
+# `cluster` label that's typically already in use to identify a k8s
+# cluster (when one Grafana watches several k8s clusters).
+# In a real setup the rayd-cluster name typically comes from a k8s
+# annotation extracted via `relabel_configs`; here we inline it as
+# `rayd-dev` for the local-only setup.
+scrape_configs:
+  - job_name: rayd-gcs
+    static_configs:
+      - targets: ["localhost:9100"]
+        labels:
+          rayd_cluster: rayd-dev
+          component: gcs
+
+  - job_name: rayd-raylet
+    static_configs:
+      - targets: ["localhost:9101"]
+        labels:
+          rayd_cluster: rayd-dev
+          component: raylet
+
+  - job_name: rayd-plasma
+    static_configs:
+      - targets: ["localhost:9102"]
+        labels:
+          rayd_cluster: rayd-dev
+          component: plasma
+
+  - job_name: rayd-driver
+    static_configs:
+      - targets: ["localhost:9103"]
+        labels:
+          rayd_cluster: rayd-dev
+          component: driver

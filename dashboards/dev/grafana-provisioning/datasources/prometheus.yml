@@ -1,0 +1,16 @@
+# Auto-provisioned Prometheus datasource. The fixed `uid: prometheus`
+# matches what `${DS_PROMETHEUS}` resolves to in the committed
+# dashboard JSON, so the dashboard works without any UID rewrite.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "5s"
