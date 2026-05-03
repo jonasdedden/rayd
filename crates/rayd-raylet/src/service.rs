@@ -279,10 +279,7 @@ impl ObjectTransportSvc for ObjectTransportService {
         Ok(Response::new(WaitForRefRemovedReply {}))
     }
 
-    async fn evict(
-        &self,
-        request: Request<EvictRequest>,
-    ) -> Result<Response<EvictReply>, Status> {
+    async fn evict(&self, request: Request<EvictRequest>) -> Result<Response<EvictReply>, Status> {
         let req = request.into_inner();
         let mut object_ids = Vec::with_capacity(req.object_ids.len());
         for raw in &req.object_ids {

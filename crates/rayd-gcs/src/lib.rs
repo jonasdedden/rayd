@@ -84,11 +84,11 @@ pub use actor_proto::{
     RegisterActorReply, RegisterActorRequest, UnregisterActorReply, UnregisterActorRequest,
 };
 pub use client::{GcsClient, GcsClientError, RegisterOutcome};
-pub use metrics::{Metrics, MetricsServerHandle, MetricsStartError};
 pub use job_proto::{
     AddJobReply, AddJobRequest, JobInfo, JobStatus, ListJobsReply, ListJobsRequest,
     MarkJobFinishedReply, MarkJobFinishedRequest,
 };
+pub use metrics::{Metrics, MetricsServerHandle, MetricsStartError};
 pub use proto::{
     DrainReply, DrainRequest, HeartbeatReply, HeartbeatRequest, ListReply, ListRequest,
     NodeAddress, NodeEvent, NodeInfo, NodeStatus, RegisterReply, RegisterRequest, Resources,

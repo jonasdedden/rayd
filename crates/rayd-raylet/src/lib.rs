@@ -74,9 +74,11 @@ pub use lifecycle::{Raylet, RayletConfig, RayletHandle, RayletStartError};
 pub use metrics::{Metrics, MetricsServerHandle, MetricsStartError};
 pub use object_manager::LocalObjectManager;
 pub use owner_sink::OwnerSink;
-pub use spill::{LocalFsBackend, ObjectIdBytes, RestoredObject, SpillBackend, SpillError, SpillUrl};
 pub use proto::{
     GetObjectLocationsReply, GetObjectLocationsRequest, ObjectMetadata, PullChunk, PullRequest,
     PushFrame, PushHeader, PushReply, RegisterObjectReply, RegisterObjectRequest,
     WaitForRefRemovedReply, WaitForRefRemovedRequest,
+};
+pub use spill::{
+    LocalFsBackend, ObjectIdBytes, RestoredObject, SpillBackend, SpillError, SpillUrl,
 };

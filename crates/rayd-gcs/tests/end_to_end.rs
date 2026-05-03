@@ -373,8 +373,14 @@ async fn metrics_endpoint_serves_register_and_heartbeat_counters() {
     // Scrape /metrics. Use raw tokio + a one-shot HTTP request rather
     // than dragging in a heavyweight client crate.
     let body = scrape_metrics(metrics_addr).await;
-    assert!(body.contains("rayd_gcs_register_node_total 1"), "body = {body:?}");
-    assert!(body.contains("rayd_gcs_heartbeat_received_total 3"), "body = {body:?}");
+    assert!(
+        body.contains("rayd_gcs_register_node_total 1"),
+        "body = {body:?}"
+    );
+    assert!(
+        body.contains("rayd_gcs_heartbeat_received_total 3"),
+        "body = {body:?}"
+    );
     assert!(body.contains("rayd_gcs_nodes_alive 1"), "body = {body:?}");
     assert!(body.contains("rayd_gcs_nodes_total 1"), "body = {body:?}");
     // Phase 4.3.3c-F: pubsub events published to WatchNodes
@@ -434,7 +440,11 @@ async fn watch_nodes_emits_snapshot_then_live_events() {
         .expect("event arrived in time")
         .expect("event present")
         .expect("event ok");
-    assert!(live.sequence >= 1, "live event sequence is {}", live.sequence);
+    assert!(
+        live.sequence >= 1,
+        "live event sequence is {}",
+        live.sequence
+    );
     assert!(live.node.is_some());
 
     // Drop the stream BEFORE shutdown — server graceful shutdown waits
@@ -549,9 +559,7 @@ async fn scrape_metrics(addr: SocketAddr) -> String {
     use tokio::net::TcpStream;
 
     let mut stream = TcpStream::connect(addr).await.expect("connect /metrics");
-    let request = format!(
-        "GET /metrics HTTP/1.0\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
-    );
+    let request = format!("GET /metrics HTTP/1.0\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .await

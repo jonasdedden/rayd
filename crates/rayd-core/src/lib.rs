@@ -18,12 +18,12 @@ pub mod store;
 pub use core_worker::{
     CoreWorker, FreeCallback, SpillPolicy, DEFAULT_SPILL_BUDGET_BYTES, DEFAULT_SPILL_THRESHOLD,
 };
-pub use log::{
-    init_default_subscriber, set_event_handler, EventHandler, DEFAULT_LOG_FILTER, LOG_FILTER_ENV,
-};
 pub use error_info::{ErrorInfo, RAW_CODE_UNSPECIFIED};
 pub use error_payload::{ErrorPayload, ErrorPayloadCodecError};
 pub use id::{ActorId, JobId, ObjectId, TaskId, WorkerId};
+pub use log::{
+    init_default_subscriber, set_event_handler, EventHandler, DEFAULT_LOG_FILTER, LOG_FILTER_ENV,
+};
 pub use metadata::{ErrorCategory, Metadata, RefState};
 pub use object_ref::{Address, ObjectRef};
 pub use ray_object::RayObject;

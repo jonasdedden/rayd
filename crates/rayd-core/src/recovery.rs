@@ -48,6 +48,5 @@ pub trait ObjectRecoverer: Send + Sync + std::fmt::Debug {
     /// Stash bytes for later recovery. Used by the spill-on-pressure
     /// path to hand cold objects to the backing store before the
     /// caller deletes them from plasma. Idempotent on the same id.
-    fn store(&self, id: ObjectId, metadata: Bytes, data: Bytes)
-        -> Result<(), RecoveryError>;
+    fn store(&self, id: ObjectId, metadata: Bytes, data: Bytes) -> Result<(), RecoveryError>;
 }

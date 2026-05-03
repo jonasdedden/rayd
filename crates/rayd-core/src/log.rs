@@ -139,11 +139,7 @@ struct MessageVisitor {
 }
 
 impl tracing::field::Visit for MessageVisitor {
-    fn record_debug(
-        &mut self,
-        field: &tracing::field::Field,
-        value: &dyn std::fmt::Debug,
-    ) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         use std::fmt::Write as _;
         if field.name() == "message" {
             // tracing's default formatting emits the message field as

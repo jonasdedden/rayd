@@ -32,6 +32,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # `prost-build` runs `protoc` at build time to compile the
+      # `.proto` files in rayd-gcs and rayd-raylet. The Ubuntu runner
+      # doesn't ship it, so we install via the action below — does
+      # the same job as `apt-get install protobuf-compiler` but is
+      # cached + cross-platform.
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust
@@ -49,6 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust
@@ -64,14 +75,27 @@ jobs:
     name: rust · loom
     runs-on: ubuntu-latest
     env:
+      # `--cfg loom` is global: it propagates into every transitive
+      # dep cargo compiles for this build. Tokio gates `tokio::net`
+      # behind `cfg(not(loom))`, so any dep that uses tokio's net
+      # (hyper-util, etc.) fails to compile — that's why we MUST
+      # also pass `--no-default-features` to drop the OTLP /
+      # tracing-opentelemetry tree below.
       RUSTFLAGS: --cfg loom
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: loom
-      - run: cargo test --release loom_ -p rayd-core --lib
+      # `--no-default-features` disables `otlp` on rayd-core, which
+      # cuts the entire tonic / hyper-util / opentelemetry-otlp dep
+      # tree (none of which are loom-aware). Loom only needs to
+      # compile `RefCounter` and the loom crate itself.
+      - run: cargo test --release loom_ -p rayd-core --lib --no-default-features
 
   # ──────────────────────────────────────────────────────────────────
   # Python: lint, typecheck, build extension, regenerate stubs and
@@ -84,6 +108,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: python-ext
@@ -134,6 +161,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: wheel-${{ matrix.os }}

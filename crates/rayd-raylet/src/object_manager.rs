@@ -98,10 +98,7 @@ impl LocalObjectManager {
     /// the entry is dropped — re-trying the same url won't help, and
     /// keeping the stale mapping would falsely advertise the object
     /// as recoverable.
-    pub fn restore(
-        &self,
-        object_id: ObjectIdBytes,
-    ) -> Result<Option<RestoredObject>, SpillError> {
+    pub fn restore(&self, object_id: ObjectIdBytes) -> Result<Option<RestoredObject>, SpillError> {
         let Some(url) = self.spill_url(object_id) else {
             return Ok(None);
         };
@@ -143,12 +140,7 @@ impl ObjectRecoverer for LocalObjectManager {
         }
     }
 
-    fn store(
-        &self,
-        id: ObjectId,
-        metadata: Bytes,
-        data: Bytes,
-    ) -> Result<(), RecoveryError> {
+    fn store(&self, id: ObjectId, metadata: Bytes, data: Bytes) -> Result<(), RecoveryError> {
         match self.spill(*id.as_bytes(), metadata, data) {
             Ok(_url) => Ok(()),
             Err(e) => Err(RecoveryError::Other(format!("spill store: {e}"))),
@@ -189,7 +181,9 @@ mod tests {
         let metadata = Bytes::from_static(b"meta");
         let data = Bytes::from_static(b"the payload");
 
-        let url = mgr.spill(obj_id(2), metadata.clone(), data.clone()).unwrap();
+        let url = mgr
+            .spill(obj_id(2), metadata.clone(), data.clone())
+            .unwrap();
         assert_eq!(mgr.spilled_count(), 1);
         assert!(mgr.is_spilled(obj_id(2)));
         assert_eq!(mgr.spill_url(obj_id(2)).as_ref(), Some(&url));
@@ -208,7 +202,12 @@ mod tests {
     #[test]
     fn forget_drops_directory_entry_and_backend_file() {
         let (_dir, mgr) = fixture();
-        mgr.spill(obj_id(4), Bytes::from_static(b"m"), Bytes::from_static(b"d")).unwrap();
+        mgr.spill(
+            obj_id(4),
+            Bytes::from_static(b"m"),
+            Bytes::from_static(b"d"),
+        )
+        .unwrap();
         assert!(mgr.is_spilled(obj_id(4)));
 
         mgr.forget(obj_id(4)).unwrap();
@@ -221,17 +220,26 @@ mod tests {
     #[test]
     fn forget_unknown_is_idempotent() {
         let (_dir, mgr) = fixture();
-        mgr.forget(obj_id(5)).expect("forgetting an unknown oid is a no-op");
+        mgr.forget(obj_id(5))
+            .expect("forgetting an unknown oid is a no-op");
     }
 
     #[test]
     fn re_spill_overwrites_directory_entry() {
         let (_dir, mgr) = fixture();
         let url1 = mgr
-            .spill(obj_id(6), Bytes::from_static(b"m1"), Bytes::from_static(b"d1"))
+            .spill(
+                obj_id(6),
+                Bytes::from_static(b"m1"),
+                Bytes::from_static(b"d1"),
+            )
             .unwrap();
         let url2 = mgr
-            .spill(obj_id(6), Bytes::from_static(b"m2"), Bytes::from_static(b"d2"))
+            .spill(
+                obj_id(6),
+                Bytes::from_static(b"m2"),
+                Bytes::from_static(b"d2"),
+            )
             .unwrap();
         // `LocalFsBackend` reuses paths per oid, so the urls match.
         assert_eq!(url1, url2);
@@ -292,7 +300,8 @@ mod tests {
         let (_dir, mgr) = fixture();
         for i in 0..5u8 {
             let data = Bytes::from(vec![i; 16]);
-            mgr.spill(obj_id(10 + i), Bytes::from_static(b"m"), data).unwrap();
+            mgr.spill(obj_id(10 + i), Bytes::from_static(b"m"), data)
+                .unwrap();
         }
         assert_eq!(mgr.spilled_count(), 5);
         for i in 0..5u8 {
@@ -312,7 +321,11 @@ mod tests {
         let mgr = LocalObjectManager::new(backend.clone());
 
         let url = mgr
-            .spill(obj_id(7), Bytes::from_static(b"m"), Bytes::from_static(b"d"))
+            .spill(
+                obj_id(7),
+                Bytes::from_static(b"m"),
+                Bytes::from_static(b"d"),
+            )
             .unwrap();
         // Yank the file out from under the manager.
         backend.remove(&url).unwrap();

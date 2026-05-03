@@ -230,11 +230,7 @@ impl GcsClient {
     /// Snapshot all named actors the GCS currently tracks. Mostly for
     /// tests & tooling; production callers should use `get_actor`.
     pub async fn list_actors(&mut self) -> Result<Vec<ActorInfo>, GcsClientError> {
-        let reply = self
-            .actors
-            .list(ListActorsRequest {})
-            .await?
-            .into_inner();
+        let reply = self.actors.list(ListActorsRequest {}).await?.into_inner();
         Ok(reply.actors)
     }
 }

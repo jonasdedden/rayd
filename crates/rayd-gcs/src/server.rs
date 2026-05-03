@@ -117,8 +117,7 @@ impl GcsServer {
         // Dropping the reporter on shutdown auto-flips status to
         // `NOT_SERVING` so a probe in flight sees the failure
         // promptly.
-        let (mut health_reporter, health_service) =
-            tonic_health::server::health_reporter();
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         health_reporter
             .set_serving::<NodeRegistryServer<NodeRegistryService>>()
             .await;

@@ -61,10 +61,13 @@ impl LocalFsBackend {
     }
 
     fn parse_url<'a>(&self, url: &'a SpillUrl) -> Result<&'a Path, SpillError> {
-        let stripped = url.0.strip_prefix("file://").ok_or_else(|| SpillError::Corrupt {
-            url: url.0.clone(),
-            reason: "url missing file:// prefix".to_owned(),
-        })?;
+        let stripped = url
+            .0
+            .strip_prefix("file://")
+            .ok_or_else(|| SpillError::Corrupt {
+                url: url.0.clone(),
+                reason: "url missing file:// prefix".to_owned(),
+            })?;
         let path = Path::new(stripped);
         // Reject urls that escape the configured root — defends
         // against a buggy caller (or future remote operator) handing
@@ -72,10 +75,7 @@ impl LocalFsBackend {
         if !path.starts_with(&self.root) {
             return Err(SpillError::Corrupt {
                 url: url.0.clone(),
-                reason: format!(
-                    "path is outside spill root {}",
-                    self.root.display()
-                ),
+                reason: format!("path is outside spill root {}", self.root.display()),
             });
         }
         Ok(path)
@@ -126,19 +126,21 @@ impl SpillBackend for LocalFsBackend {
         };
 
         let mut len_buf = [0u8; 4];
-        file.read_exact(&mut len_buf).map_err(|e| corrupt_io(url, e))?;
+        file.read_exact(&mut len_buf)
+            .map_err(|e| corrupt_io(url, e))?;
         let metadata_len = u32::from_le_bytes(len_buf) as usize;
         let mut metadata = vec![0u8; metadata_len];
-        file.read_exact(&mut metadata).map_err(|e| corrupt_io(url, e))?;
+        file.read_exact(&mut metadata)
+            .map_err(|e| corrupt_io(url, e))?;
 
         let mut data_len_buf = [0u8; 8];
-        file.read_exact(&mut data_len_buf).map_err(|e| corrupt_io(url, e))?;
-        let data_len = usize::try_from(u64::from_le_bytes(data_len_buf)).map_err(|_| {
-            SpillError::Corrupt {
+        file.read_exact(&mut data_len_buf)
+            .map_err(|e| corrupt_io(url, e))?;
+        let data_len =
+            usize::try_from(u64::from_le_bytes(data_len_buf)).map_err(|_| SpillError::Corrupt {
                 url: url.0.clone(),
                 reason: "data length doesn't fit in usize".to_owned(),
-            }
-        })?;
+            })?;
         let mut data = vec![0u8; data_len];
         file.read_exact(&mut data).map_err(|e| corrupt_io(url, e))?;
 
@@ -183,7 +185,9 @@ mod tests {
 
         let metadata = Bytes::from_static(b"meta-bytes");
         let data = Bytes::from_static(b"hello, plasma!");
-        let url = backend.spill(obj_id(1), metadata.clone(), data.clone()).unwrap();
+        let url = backend
+            .spill(obj_id(1), metadata.clone(), data.clone())
+            .unwrap();
         assert!(url.as_str().starts_with("file://"));
 
         let restored = backend.restore(&url).unwrap();
@@ -196,7 +200,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let backend = LocalFsBackend::new(tmp.path()).unwrap();
 
-        let url = backend.spill(obj_id(2), Bytes::new(), Bytes::new()).unwrap();
+        let url = backend
+            .spill(obj_id(2), Bytes::new(), Bytes::new())
+            .unwrap();
         let restored = backend.restore(&url).unwrap();
         assert!(restored.metadata.is_empty());
         assert!(restored.data.is_empty());
@@ -208,10 +214,18 @@ mod tests {
         let backend = LocalFsBackend::new(tmp.path()).unwrap();
 
         let url1 = backend
-            .spill(obj_id(3), Bytes::from_static(b"m1"), Bytes::from_static(b"d1"))
+            .spill(
+                obj_id(3),
+                Bytes::from_static(b"m1"),
+                Bytes::from_static(b"d1"),
+            )
             .unwrap();
         let url2 = backend
-            .spill(obj_id(3), Bytes::from_static(b"m2"), Bytes::from_static(b"d2"))
+            .spill(
+                obj_id(3),
+                Bytes::from_static(b"m2"),
+                Bytes::from_static(b"d2"),
+            )
             .unwrap();
         assert_eq!(url1, url2, "same object_id maps to the same url");
 
@@ -226,7 +240,11 @@ mod tests {
         let backend = LocalFsBackend::new(tmp.path()).unwrap();
 
         let url = backend
-            .spill(obj_id(4), Bytes::from_static(b"m"), Bytes::from_static(b"d"))
+            .spill(
+                obj_id(4),
+                Bytes::from_static(b"m"),
+                Bytes::from_static(b"d"),
+            )
             .unwrap();
         backend.remove(&url).unwrap();
         let err = backend.restore(&url).unwrap_err();
@@ -242,7 +260,9 @@ mod tests {
         // the spill root.
         let path = backend.path_for(obj_id(5));
         let url = LocalFsBackend::url_for(&path);
-        backend.remove(&url).expect("removing an absent file is a no-op");
+        backend
+            .remove(&url)
+            .expect("removing an absent file is a no-op");
     }
 
     #[test]
@@ -285,7 +305,11 @@ mod tests {
         let url = {
             let backend = LocalFsBackend::new(tmp.path()).unwrap();
             backend
-                .spill(obj_id(8), Bytes::from_static(b"meta"), Bytes::from_static(b"data"))
+                .spill(
+                    obj_id(8),
+                    Bytes::from_static(b"meta"),
+                    Bytes::from_static(b"data"),
+                )
                 .unwrap()
         };
         // Drop and re-open the backend at the same root.

@@ -138,9 +138,8 @@ impl Metrics {
         let metric_families = self.registry.gather();
         let mut buf = Vec::new();
         encoder.encode(&metric_families, &mut buf)?;
-        String::from_utf8(buf).map_err(|e| {
-            prometheus::Error::Msg(format!("metrics encoder produced non-UTF-8: {e}"))
-        })
+        String::from_utf8(buf)
+            .map_err(|e| prometheus::Error::Msg(format!("metrics encoder produced non-UTF-8: {e}")))
     }
 }
 
@@ -212,7 +211,11 @@ pub(crate) async fn start_metrics_server(
 
 async fn scrape_handler(State(metrics): State<Metrics>) -> impl IntoResponse {
     match metrics.encode_text() {
-        Ok(body) => (StatusCode::OK, [("Content-Type", "text/plain; version=0.0.4")], body),
+        Ok(body) => (
+            StatusCode::OK,
+            [("Content-Type", "text/plain; version=0.0.4")],
+            body,
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             [("Content-Type", "text/plain")],

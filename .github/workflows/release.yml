@@ -53,6 +53,11 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: "2014"
           args: --release --out dist
+          # The manylinux2014 image (CentOS-7-based) doesn't ship
+          # protoc; `prost-build` needs it to compile the .proto files
+          # in rayd-gcs and rayd-raylet.
+          before-script-linux: |
+            yum install -y protobuf-compiler || dnf install -y protobuf-compiler
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-linux-${{ matrix.target }}
@@ -81,6 +86,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Sync workspace + pyproject version to tag
         run: python3 tools/set_version_from_tag.py "${{ inputs.ref || github.ref }}"
       - name: Build wheel

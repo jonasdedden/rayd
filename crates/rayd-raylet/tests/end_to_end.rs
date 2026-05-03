@@ -507,7 +507,10 @@ async fn pull_restores_after_evicting_from_plasma() {
         let err = client.get(oid).unwrap_err();
         assert!(matches!(
             err,
-            rayd_plasma::PlasmaError::Server { kind: rayd_plasma::ServerErrorKind::NotFound, .. },
+            rayd_plasma::PlasmaError::Server {
+                kind: rayd_plasma::ServerErrorKind::NotFound,
+                ..
+            },
         ));
     }
 
@@ -523,7 +526,9 @@ async fn pull_restores_after_evicting_from_plasma() {
     // get should now succeed.
     {
         let mut client = h.plasma_client();
-        let handle = client.get(oid).expect("plasma should have it after restore");
+        let handle = client
+            .get(oid)
+            .expect("plasma should have it after restore");
         assert_eq!(handle.data(), &payload[..]);
     }
 
@@ -598,8 +603,14 @@ async fn raylet_metrics_endpoint_counts_pulls_and_directory() {
 
     let body = scrape_metrics(metrics_addr).await;
     assert!(body.contains("rayd_raylet_pull_total 1"), "body = {body:?}");
-    assert!(body.contains("rayd_raylet_register_object_total 2"), "body = {body:?}");
-    assert!(body.contains("rayd_raylet_directory_entries 2"), "body = {body:?}");
+    assert!(
+        body.contains("rayd_raylet_register_object_total 2"),
+        "body = {body:?}"
+    );
+    assert!(
+        body.contains("rayd_raylet_directory_entries 2"),
+        "body = {body:?}"
+    );
 
     raylet.shutdown().await;
     drop(plasma_server);
@@ -676,9 +687,7 @@ async fn scrape_metrics(addr: SocketAddr) -> String {
     use tokio::net::TcpStream;
 
     let mut stream = TcpStream::connect(addr).await.expect("connect /metrics");
-    let request = format!(
-        "GET /metrics HTTP/1.0\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
-    );
+    let request = format!("GET /metrics HTTP/1.0\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .await

@@ -275,8 +275,7 @@ impl NodeRegistrySvc for NodeRegistryService {
         }))
     }
 
-    type WatchNodesStream =
-        Pin<Box<dyn Stream<Item = Result<NodeEvent, Status>> + Send + 'static>>;
+    type WatchNodesStream = Pin<Box<dyn Stream<Item = Result<NodeEvent, Status>> + Send + 'static>>;
 
     async fn watch_nodes(
         &self,

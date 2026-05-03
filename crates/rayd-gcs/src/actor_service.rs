@@ -118,10 +118,7 @@ impl ActorRegistrySvc for ActorRegistryService {
         }
         let guard = self.registry.actors.lock();
         match guard.get(&req.name) {
-            None => Err(Status::not_found(format!(
-                "no actor named {:?}",
-                req.name
-            ))),
+            None => Err(Status::not_found(format!("no actor named {:?}", req.name))),
             Some(info) => Ok(Response::new(GetActorReply {
                 actor: Some(info.clone()),
             })),

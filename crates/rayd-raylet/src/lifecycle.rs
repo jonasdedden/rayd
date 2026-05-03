@@ -179,8 +179,7 @@ impl Raylet {
         // overall slot also reports `SERVING`. Probes use this to
         // verify the raylet's gRPC layer is up before sending real
         // RPCs.
-        let (mut health_reporter, health_service) =
-            tonic_health::server::health_reporter();
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         health_reporter
             .set_serving::<ObjectTransportServer<ObjectTransportService>>()
             .await;
@@ -240,9 +239,7 @@ impl Raylet {
             watch_shutdown_rx,
         ));
 
-        let metrics_handle = if let (Some(addr), Some(m)) =
-            (config.metrics_bind, metrics.clone())
-        {
+        let metrics_handle = if let (Some(addr), Some(m)) = (config.metrics_bind, metrics.clone()) {
             Some(start_metrics_server(addr, m).await?)
         } else {
             None

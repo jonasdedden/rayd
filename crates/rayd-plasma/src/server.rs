@@ -126,7 +126,8 @@ impl PlasmaServer {
         let metrics = match metrics_bind {
             Some(_) => {
                 let m = Metrics::new()?;
-                m.arena_bytes_total.set(i64::try_from(capacity).unwrap_or(i64::MAX));
+                m.arena_bytes_total
+                    .set(i64::try_from(capacity).unwrap_or(i64::MAX));
                 Some(m)
             }
             None => None,
@@ -326,11 +327,13 @@ fn handle_create(
             },
         );
         if let Some(m) = metrics {
-            m.objects_total.set(i64::try_from(table_guard.objects.len()).unwrap_or(i64::MAX));
+            m.objects_total
+                .set(i64::try_from(table_guard.objects.len()).unwrap_or(i64::MAX));
         }
     }
     if let Some(m) = metrics {
-        m.arena_bytes_used.set(i64::try_from(arena.used()).unwrap_or(i64::MAX));
+        m.arena_bytes_used
+            .set(i64::try_from(arena.used()).unwrap_or(i64::MAX));
     }
 
     let info = SlotInfo {
@@ -454,13 +457,15 @@ fn handle_delete(
         guard.objects.len()
     };
     if let Some(m) = metrics {
-        m.objects_total.set(i64::try_from(new_count).unwrap_or(i64::MAX));
+        m.objects_total
+            .set(i64::try_from(new_count).unwrap_or(i64::MAX));
         // Note: arena.used() doesn't shrink on delete in Phase 2 (no
         // free-list yet — proper arena reuse waits on Phase 6).
         // Setting it anyway keeps the metric internally consistent
         // for the inverse: a future arena that does reclaim will
         // automatically reflect that here without changing this code.
-        m.arena_bytes_used.set(i64::try_from(arena.used()).unwrap_or(i64::MAX));
+        m.arena_bytes_used
+            .set(i64::try_from(arena.used()).unwrap_or(i64::MAX));
     }
     send_response(stream, &Response::Ok, None)
 }
@@ -556,13 +561,25 @@ mod tests {
             .map(|(_, b)| b.to_owned())
             .unwrap_or(response);
 
-        assert!(body.contains("rayd_plasma_create_total 2"), "body = {body:?}");
+        assert!(
+            body.contains("rayd_plasma_create_total 2"),
+            "body = {body:?}"
+        );
         assert!(body.contains("rayd_plasma_get_total 1"), "body = {body:?}");
-        assert!(body.contains("rayd_plasma_delete_total 1"), "body = {body:?}");
+        assert!(
+            body.contains("rayd_plasma_delete_total 1"),
+            "body = {body:?}"
+        );
         // 1 object remaining after the delete.
-        assert!(body.contains("rayd_plasma_objects_total 1"), "body = {body:?}");
+        assert!(
+            body.contains("rayd_plasma_objects_total 1"),
+            "body = {body:?}"
+        );
         // Static at startup; should mirror what we passed.
-        assert!(body.contains("rayd_plasma_arena_bytes_total 65536"), "body = {body:?}");
+        assert!(
+            body.contains("rayd_plasma_arena_bytes_total 65536"),
+            "body = {body:?}"
+        );
 
         handle.shutdown();
     }

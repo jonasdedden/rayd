@@ -928,9 +928,7 @@ pub mod _native {
                             Py::new(py, PyErrorInfo::from_inner(info))?.into_any(),
                         )
                     }
-                    Metadata::Pickle5 { .. } => {
-                        ("ok".to_owned(), serialize::loads(py, &obj.data)?)
-                    }
+                    Metadata::Pickle5 { .. } => ("ok".to_owned(), serialize::loads(py, &obj.data)?),
                     Metadata::Raw => (
                         "ok".to_owned(),
                         PyBytes::new(py, &obj.data).into_any().unbind(),
@@ -1758,9 +1756,7 @@ pub mod _native {
                     "no GCS connection (set RAYD_GCS_ADDRESS before rayd.init())",
                 )
             })?
-            .map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("get_actor: {e}"))
-            })?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("get_actor: {e}")))?;
         Ok(info.map(convert_actor))
     }
 

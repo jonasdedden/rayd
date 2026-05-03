@@ -14,9 +14,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use prometheus::{
-    Encoder as _, IntCounter, IntGauge, Registry as PromRegistry, TextEncoder,
-};
+use prometheus::{Encoder as _, IntCounter, IntGauge, Registry as PromRegistry, TextEncoder};
 use thiserror::Error;
 use tracing::{debug, warn};
 
@@ -110,9 +108,8 @@ impl Metrics {
         let metric_families = self.registry.gather();
         let mut buf = Vec::new();
         encoder.encode(&metric_families, &mut buf)?;
-        String::from_utf8(buf).map_err(|e| {
-            prometheus::Error::Msg(format!("metrics encoder produced non-UTF-8: {e}"))
-        })
+        String::from_utf8(buf)
+            .map_err(|e| prometheus::Error::Msg(format!("metrics encoder produced non-UTF-8: {e}")))
     }
 }
 
@@ -158,10 +155,8 @@ pub fn start_metrics_server(
     addr: SocketAddr,
     metrics: Metrics,
 ) -> Result<MetricsServerHandle, MetricsStartError> {
-    let listener = TcpListener::bind(addr).map_err(|e| MetricsStartError::Bind {
-        addr,
-        source: e,
-    })?;
+    let listener =
+        TcpListener::bind(addr).map_err(|e| MetricsStartError::Bind { addr, source: e })?;
     let local_addr = listener
         .local_addr()
         .map_err(|e| MetricsStartError::Bind { addr, source: e })?;
@@ -209,10 +204,7 @@ fn run_metrics_loop(listener: &TcpListener, metrics: &Metrics, shutdown: &Arc<At
     }
 }
 
-fn serve_one(
-    stream: &mut std::net::TcpStream,
-    metrics: &Metrics,
-) -> Result<(), std::io::Error> {
+fn serve_one(stream: &mut std::net::TcpStream, metrics: &Metrics) -> Result<(), std::io::Error> {
     // Read request bytes until we see "\r\n\r\n" or hit a small cap.
     // We don't need to parse the full request — just confirm it asks
     // for `/metrics` on GET.

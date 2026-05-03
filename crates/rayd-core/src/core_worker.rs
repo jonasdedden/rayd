@@ -438,7 +438,7 @@ impl CoreWorker {
     #[allow(
         clippy::cast_precision_loss,
         clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
+        clippy::cast_possible_truncation
     )]
     pub fn maybe_spill_for_pressure(&self) -> usize {
         let policy = *self.spill_policy.lock();
@@ -681,12 +681,8 @@ impl CoreWorker {
                     object_id: id.hex(),
                 });
             };
-            match client.create_and_seal(
-                *id.as_bytes(),
-                &bytes.metadata,
-                &bytes.data,
-                address_blob,
-            ) {
+            match client.create_and_seal(*id.as_bytes(), &bytes.metadata, &bytes.data, address_blob)
+            {
                 Ok(())
                 | Err(PlasmaError::Server {
                     kind: rayd_plasma::ServerErrorKind::AlreadyExists,

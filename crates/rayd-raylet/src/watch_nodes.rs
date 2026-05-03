@@ -56,9 +56,14 @@ pub(crate) async fn run_watch_nodes(
         info!(last_seen_sequence, "rayd-raylet: WatchNodes stream open");
 
         // Drive events until either the stream errors or shutdown fires.
-        let stream_outcome =
-            consume_stream(stream, &node_index, owner_sink.as_ref(), &mut last_seen_sequence,
-                &mut shutdown_rx).await;
+        let stream_outcome = consume_stream(
+            stream,
+            &node_index,
+            owner_sink.as_ref(),
+            &mut last_seen_sequence,
+            &mut shutdown_rx,
+        )
+        .await;
         match stream_outcome {
             StreamOutcome::Shutdown => return,
             StreamOutcome::ResetResume => {
@@ -138,10 +143,7 @@ async fn consume_stream(
 /// Either await `dur` or break out of the wait when `shutdown_rx`
 /// fires. Returns `true` when shutdown was observed (caller should
 /// exit), `false` on natural sleep completion.
-async fn sleep_with_shutdown(
-    shutdown_rx: &mut oneshot::Receiver<()>,
-    dur: Duration,
-) -> bool {
+async fn sleep_with_shutdown(shutdown_rx: &mut oneshot::Receiver<()>, dur: Duration) -> bool {
     tokio::select! {
         _ = &mut *shutdown_rx => true,
         () = tokio::time::sleep(dur) => false,

@@ -1,7 +1,9 @@
 # Rust
 /target
 **/*.rs.bk
-Cargo.lock
+# `Cargo.lock` is committed (workspace ships a binary `rayd-cli`, so the
+# Rust convention applies). CI runs `cargo test --locked` to verify a
+# fresh build resolves to the exact same dep set developers see locally.
 
 # Python
 __pycache__/

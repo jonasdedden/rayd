@@ -269,7 +269,10 @@ impl GcsBinding {
     /// subscriber hasn't observed `node_id` yet (or no raylet is
     /// attached) — caller should fall back to a `list_nodes()` RPC.
     pub(crate) fn node_status(&self, node_id: [u8; 16]) -> Option<rayd_gcs::NodeStatus> {
-        self.raylet.lock().as_ref().and_then(|r| r.node_status(&node_id))
+        self.raylet
+            .lock()
+            .as_ref()
+            .and_then(|r| r.node_status(&node_id))
     }
 
     pub(crate) fn list_jobs(&self) -> Result<Vec<JobInfo>, GcsClientError> {

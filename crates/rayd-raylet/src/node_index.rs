@@ -52,8 +52,7 @@ impl NodeIndex {
         let Some(addr) = parse_node_address(info) else {
             return StatusTransition::Skipped;
         };
-        let new_status =
-            NodeStatus::try_from(info.status).unwrap_or(NodeStatus::Unspecified);
+        let new_status = NodeStatus::try_from(info.status).unwrap_or(NodeStatus::Unspecified);
         let Some(node_id) = info.address.as_ref().map(|a| a.node_id.as_slice()) else {
             return StatusTransition::Skipped;
         };
@@ -109,10 +108,7 @@ pub(crate) enum StatusTransition {
     /// First time we've seen this node.
     Inserted(NodeStatus),
     /// Status moved from `from` to `to`.
-    Changed {
-        from: NodeStatus,
-        to: NodeStatus,
-    },
+    Changed { from: NodeStatus, to: NodeStatus },
     /// Re-broadcast or duplicate — status identical.
     Unchanged,
     /// Malformed event (missing address, bad `node_id` length). Caller
