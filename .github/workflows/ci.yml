@@ -227,7 +227,7 @@ jobs:
             || (echo "::error::wheel missing _native.pyi"; exit 1)
           unzip -l "$wheel" | grep -q "rayd/py.typed" \
             || (echo "::error::wheel missing py.typed"; exit 1)
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.os }}
           path: dist/*.whl

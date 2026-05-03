@@ -61,7 +61,7 @@ jobs:
           # in rayd-gcs and rayd-raylet.
           before-script-linux: |
             yum install -y protobuf-compiler || dnf install -y protobuf-compiler
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-linux-${{ matrix.target }}
           path: dist/*.whl
@@ -100,7 +100,7 @@ jobs:
         with:
           target: ${{ matrix.target }}-apple-darwin
           args: --release --out dist
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-macos-${{ matrix.target }}
           path: dist/*.whl
@@ -127,7 +127,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -144,7 +144,7 @@ jobs:
     needs: [linux, macos, sdist]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -228,7 +228,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
