@@ -279,6 +279,14 @@ pub(crate) fn uninstall(py: Python<'_>) -> bool {
         if let Some(m) = metrics {
             m.shutdown();
         }
+        // Free every plasma object the driver still tracks. Without
+        // this step the local plasma server keeps every put +
+        // task-return value resident until its own process exits —
+        // user-visible as a non-zero `rayd_plasma_objects_total`
+        // after `rayd.shutdown()`. Any Python `ObjectRef` instances
+        // still alive at this point will fire `__del__` later but
+        // find an empty `RefCounter`, which is the no-op path.
+        worker.free_all_local();
         if let Some(d) = dispatcher {
             d.shutdown();
         }
