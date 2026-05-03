@@ -17,6 +17,12 @@ stubs: build
 	RAYD_CDYLIB_PATH=$(shell .venv/bin/python -c 'import rayd._native, pathlib; print(rayd._native.__file__)') \
 	    cargo run --bin stub_gen --release
 	$(PYTHON) tools/fix_stubs.py python/rayd/_native.pyi
+	# Splice runtime docstrings (from Rust doc comments captured as
+	# `__doc__`) into the stub so IDEs and `help()` and the .pyi all
+	# read from the same source. Must run AFTER fix_stubs (which uses
+	# regex on bare `: ...` bodies) and BEFORE ruff format (which
+	# normalises whitespace).
+	$(PYTHON) tools/inject_docstrings.py python/rayd/_native.pyi
 	# Format the regenerated stub so the committed copy is byte-
 	# identical to a fresh regeneration — without this step the CI
 	# stubs-freshness diff fails on whitespace-only deltas (multi-line
