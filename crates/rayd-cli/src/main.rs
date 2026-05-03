@@ -350,7 +350,5 @@ fn run_start_worker(
 }
 
 fn num_logical_cpus() -> usize {
-    std::thread::available_parallelism()
-        .map(std::num::NonZero::get)
-        .unwrap_or(1)
+    std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
 }

@@ -564,9 +564,7 @@ fn default_resources() -> Resources {
 }
 
 fn num_logical_cpus() -> usize {
-    std::thread::available_parallelism()
-        .map(std::num::NonZero::get)
-        .unwrap_or(1)
+    std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
 }
 
 fn hex_prefix(id: &[u8; 16]) -> String {
