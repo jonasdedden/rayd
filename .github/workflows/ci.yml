@@ -121,9 +121,18 @@ jobs:
         with:
           enable-cache: true
       - name: Install dev deps
-        run: uv sync --group dev
+        # `--no-install-project` skips uv's editable install of rayd
+        # itself. Without it, uv runs `maturin develop` here as a side
+        # effect (the 1m+ "Building rayd @ ..." line in the log) and
+        # then the next step builds AGAIN. The next step is the
+        # canonical build; this one just needs maturin/ruff/mypy/etc.
+        # on PATH from the dev group.
+        run: uv sync --group dev --no-install-project
       - name: Build native extension (debug, editable)
-        run: uv run maturin develop --uv
+        # `--no-sync` keeps uv from re-validating the venv before
+        # invoking maturin. The venv is fresh from the previous step,
+        # nothing has changed, the validation is wasted overhead.
+        run: uv run --no-sync maturin develop --uv
       - name: Verify committed stubs match generator output
         run: |
           # `make stubs-only` regenerates _native.pyi from the already-
@@ -138,15 +147,19 @@ jobs:
             echo "::error::Committed stubs are stale. Run 'make stubs' locally and commit the result."
             exit 1
           fi
-      - run: uv run ruff format --check python
-      - run: uv run ruff check python
-      - run: uv run mypy
+      # `--no-sync` on every subsequent `uv run` so uv doesn't
+      # repeatedly re-validate the venv between linter / typecheck /
+      # test invocations. After `maturin develop`, the venv is
+      # complete and stable for the rest of the job.
+      - run: uv run --no-sync ruff format --check python
+      - run: uv run --no-sync ruff check python
+      - run: uv run --no-sync mypy
       # Verify the committed stub's per-function override types match
       # the live `rayd._native` runtime — catches a regression of
       # `tools/fix_stubs.py::_OVERRIDES` if a Rust function's actual
       # return shape drifts from what the .pyi advertises.
-      - run: uv run python -m mypy.stubtest rayd._native
-      - run: uv run pytest --maxfail=1 -q
+      - run: uv run --no-sync python -m mypy.stubtest rayd._native
+      - run: uv run --no-sync pytest --maxfail=1 -q
 
   # ──────────────────────────────────────────────────────────────────
   # Wheel build: validates `maturin build --release` produces an
