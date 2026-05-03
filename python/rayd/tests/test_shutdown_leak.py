@@ -123,9 +123,7 @@ def test_shutdown_frees_plasma_even_with_live_refs(
     with _spawn_plasma(sock, metrics_addr):
         rayd.init()
         # 15 plasma-resident objects (each above the inline threshold).
-        refs = [
-            rayd.put(b"\x00" * (_INLINE_THRESHOLD + 1024 + i)) for i in range(15)
-        ]
+        refs = [rayd.put(b"\x00" * (_INLINE_THRESHOLD + 1024 + i)) for i in range(15)]
         # Settle metrics.
         time.sleep(0.1)
         before = _scrape_objects_total(metrics_addr)
@@ -150,10 +148,11 @@ def test_shutdown_then_reinit_starts_with_clean_plasma(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A second `rayd.init()` against the same plasma server sees an
-    empty arena. Catches the case where shutdown frees memory-store
-    entries but leaves plasma copies (which would surface as a hidden
-    ramp-up over the lifetime of the plasma server).
+    """A second `rayd.init()` against the same plasma server sees an empty arena.
+
+    Catches the case where shutdown frees memory-store entries but
+    leaves plasma copies (which would surface as a hidden ramp-up
+    over the lifetime of the plasma server).
     """
     sock = tmp_path / "plasma.sock"
     metrics_addr = f"127.0.0.1:{_free_port()}"

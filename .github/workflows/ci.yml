@@ -112,6 +112,11 @@ jobs:
       - run: uv run ruff format --check python
       - run: uv run ruff check python
       - run: uv run mypy
+      # Verify the committed stub's per-function override types match
+      # the live `rayd._native` runtime — catches a regression of
+      # `tools/fix_stubs.py::_OVERRIDES` if a Rust function's actual
+      # return shape drifts from what the .pyi advertises.
+      - run: uv run python -m mypy.stubtest rayd._native
       - run: uv run pytest --maxfail=1 -q
 
   # ──────────────────────────────────────────────────────────────────

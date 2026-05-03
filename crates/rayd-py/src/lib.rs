@@ -904,67 +904,72 @@ pub mod _native {
     #[pyo3(signature = (refs, timeout=None))]
     pub fn get_settled(
         py: Python<'_>,
-        refs: Bound<'_, PyList>,
+        refs: Vec<PyObjectRef>,
         timeout: Option<f64>,
-    ) -> PyResult<Py<PyList>> {
+    ) -> PyResult<Vec<(String, Py<PyAny>)>> {
         if let Some(m) = crate::driver_metrics::current() {
             m.gets_total.inc();
         }
         let worker = runtime::require()?;
         let timeout = parse_timeout(timeout)?;
 
-        let py_refs = extract_refs(&refs)?;
-
-        let out = PyList::empty(py);
-        for r in &py_refs {
+        let mut out: Vec<(String, Py<PyAny>)> = Vec::with_capacity(refs.len());
+        for r in &refs {
             let resolved = py
                 .detach(|| worker.resolve_blocking(r.inner.object_id(), timeout))
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("resolve: {e}")))?;
-            match resolved {
-                None => {
-                    out.append(("pending", py.None()))?;
-                }
+            let entry: (String, Py<PyAny>) = match resolved {
+                None => ("pending".to_owned(), py.None()),
                 Some(obj) => match obj.metadata {
                     Metadata::Error { category, raw_code } => {
                         let info = error_info_from_object(category, raw_code, &obj.data)?;
-                        out.append(("err", PyErrorInfo::from_inner(info)))?;
+                        (
+                            "err".to_owned(),
+                            Py::new(py, PyErrorInfo::from_inner(info))?.into_any(),
+                        )
                     }
                     Metadata::Pickle5 { .. } => {
-                        let value = serialize::loads(py, &obj.data)?;
-                        out.append(("ok", value))?;
+                        ("ok".to_owned(), serialize::loads(py, &obj.data)?)
                     }
-                    Metadata::Raw => {
-                        out.append(("ok", PyBytes::new(py, &obj.data).unbind()))?;
-                    }
+                    Metadata::Raw => (
+                        "ok".to_owned(),
+                        PyBytes::new(py, &obj.data).into_any().unbind(),
+                    ),
                     Metadata::ActorHandle => {
                         return Err(pyo3::exceptions::PyNotImplementedError::new_err(
                             "actor handle deserialization lands in Phase 5",
                         ));
                     }
                 },
-            }
+            };
+            out.push(entry);
         }
-        Ok(out.unbind())
+        Ok(out)
     }
 
     /// Snapshot per-ref state. One mutex acquisition for the whole batch;
     /// no payload deserialization.
+    ///
+    /// Returns a list of `(ref, state)` pairs rather than a dict so
+    /// `PyO3`'s `experimental-inspect` can emit a precise
+    /// `list[tuple[ObjectRef, RefState]]` type hint without relying
+    /// on `Py<PyDict>` (which erases to bare `dict`). The Python
+    /// facade rewraps via `dict(...)`.
     #[pyfunction]
-    pub fn state(refs: Bound<'_, PyList>) -> PyResult<Py<PyDict>> {
+    pub fn state(refs: Vec<PyObjectRef>) -> PyResult<Vec<(PyObjectRef, PyRefState)>> {
         let worker = runtime::require()?;
-        let py = refs.py();
-        let py_refs = extract_refs(&refs)?;
-        let ids: Vec<ObjectId> = py_refs.iter().map(|r| *r.inner.object_id()).collect();
+        let ids: Vec<ObjectId> = refs.iter().map(|r| *r.inner.object_id()).collect();
         let snap = worker.store().state_snapshot(&ids);
-        let out = PyDict::new(py);
-        for r in &py_refs {
-            let s = snap
-                .get(r.inner.object_id())
-                .copied()
-                .unwrap_or(RefState::Pending);
-            out.set_item(r.clone(), PyRefState::from_core(s))?;
-        }
-        Ok(out.unbind())
+        Ok(refs
+            .into_iter()
+            .map(|r| {
+                let s = snap
+                    .get(r.inner.object_id())
+                    .copied()
+                    .unwrap_or(RefState::Pending);
+                (r, PyRefState::from_core(s))
+            })
+            .collect())
     }
 
     /// Wait for at least `num_returns` of `refs` to enter a terminal state.
@@ -973,31 +978,26 @@ pub mod _native {
     #[pyo3(signature = (refs, num_returns=1, timeout=None))]
     pub fn wait(
         py: Python<'_>,
-        refs: Bound<'_, PyList>,
+        refs: Vec<PyObjectRef>,
         num_returns: usize,
         timeout: Option<f64>,
-    ) -> PyResult<Py<PyTuple>> {
+    ) -> PyResult<(Vec<PyObjectRef>, Vec<PyObjectRef>)> {
         let worker = runtime::require()?;
         let timeout = parse_timeout(timeout)?;
-        let py_refs = extract_refs(&refs)?;
-        let ids: Vec<ObjectId> = py_refs.iter().map(|r| *r.inner.object_id()).collect();
+        let ids: Vec<ObjectId> = refs.iter().map(|r| *r.inner.object_id()).collect();
 
         let outcome = py.detach(|| worker.store().wait(&ids, num_returns, timeout));
 
-        let ready = PyList::empty(py);
-        let not_ready = PyList::empty(py);
-        for r in &py_refs {
+        let mut ready = Vec::new();
+        let mut not_ready = Vec::new();
+        for r in refs {
             if outcome.ready.contains(r.inner.object_id()) {
-                ready.append(r.clone())?;
+                ready.push(r);
             } else {
-                not_ready.append(r.clone())?;
+                not_ready.push(r);
             }
         }
-        Ok(PyTuple::new(
-            py,
-            [ready.unbind().into_any(), not_ready.unbind().into_any()],
-        )?
-        .unbind())
+        Ok((ready, not_ready))
     }
 
     /// Wait variant that returns a snapshot of states instead of a
@@ -1007,27 +1007,27 @@ pub mod _native {
     #[pyo3(signature = (refs, timeout=None))]
     pub fn wait_with_states(
         py: Python<'_>,
-        refs: Bound<'_, PyList>,
+        refs: Vec<PyObjectRef>,
         timeout: Option<f64>,
-    ) -> PyResult<Py<PyDict>> {
+    ) -> PyResult<Vec<(PyObjectRef, PyRefState)>> {
         let worker = runtime::require()?;
         let timeout = parse_timeout(timeout)?;
-        let py_refs = extract_refs(&refs)?;
-        let ids: Vec<ObjectId> = py_refs.iter().map(|r| *r.inner.object_id()).collect();
+        let ids: Vec<ObjectId> = refs.iter().map(|r| *r.inner.object_id()).collect();
 
         // Wait for all refs to settle (or until timeout).
         py.detach(|| worker.store().wait(&ids, ids.len(), timeout));
         let snap = worker.store().state_snapshot(&ids);
 
-        let out = PyDict::new(py);
-        for r in &py_refs {
-            let s = snap
-                .get(r.inner.object_id())
-                .copied()
-                .unwrap_or(RefState::Pending);
-            out.set_item(r.clone(), PyRefState::from_core(s))?;
-        }
-        Ok(out.unbind())
+        Ok(refs
+            .into_iter()
+            .map(|r| {
+                let s = snap
+                    .get(r.inner.object_id())
+                    .copied()
+                    .unwrap_or(RefState::Pending);
+                (r, PyRefState::from_core(s))
+            })
+            .collect())
     }
 
     /// Submit a callable for asynchronous execution. Returns a list of
@@ -1044,7 +1044,7 @@ pub mod _native {
         args: Py<PyTuple>,
         kwargs: Option<Py<PyDict>>,
         num_returns: u32,
-    ) -> PyResult<Py<PyList>> {
+    ) -> PyResult<Vec<PyObjectRef>> {
         if let Some(m) = crate::driver_metrics::current() {
             m.tasks_submitted_total.inc();
         }
@@ -1093,19 +1093,18 @@ pub mod _native {
             kwargs_blob,
         });
 
-        let out = PyList::empty(py);
-        for id in object_ids {
-            let r = ObjectRef::new(id, worker.address().clone());
-            out.append(PyObjectRef::from_inner(r))?;
-        }
-        Ok(out.unbind())
+        let _ = py;
+        Ok(object_ids
+            .into_iter()
+            .map(|id| PyObjectRef::from_inner(ObjectRef::new(id, worker.address().clone())))
+            .collect())
     }
 
     /// Free a list of refs from the local store. (No-op if not present.)
     #[pyfunction]
-    pub fn free(refs: Bound<'_, PyList>) -> PyResult<()> {
+    pub fn free(refs: Vec<PyObjectRef>) -> PyResult<()> {
         let worker = runtime::require()?;
-        let ids = extract_ids(&refs)?;
+        let ids: Vec<ObjectId> = refs.iter().map(|r| *r.inner.object_id()).collect();
         worker.store().delete(&ids);
         Ok(())
     }
@@ -1687,7 +1686,7 @@ pub mod _native {
     /// Raises `RuntimeError` if `RAYD_GCS_ADDRESS` was not set on `init()`,
     /// since there's no GCS to query.
     #[pyfunction]
-    pub fn list_nodes(py: Python<'_>) -> PyResult<Py<PyList>> {
+    pub fn list_nodes() -> PyResult<Vec<PyNodeInfo>> {
         let nodes = runtime::with_gcs(super::gcs::GcsBinding::list_nodes)?
             .ok_or_else(|| {
                 pyo3::exceptions::PyRuntimeError::new_err(
@@ -1697,18 +1696,14 @@ pub mod _native {
             .map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!("gcs list_nodes: {e}"))
             })?;
-        let out = PyList::empty(py);
-        for node in nodes {
-            out.append(convert_node(node))?;
-        }
-        Ok(out.unbind())
+        Ok(nodes.into_iter().map(convert_node).collect())
     }
 
     /// Snapshot all jobs the GCS knows about (running + finished).
     ///
     /// Raises `RuntimeError` if `RAYD_GCS_ADDRESS` was not set on `init()`.
     #[pyfunction]
-    pub fn list_jobs(py: Python<'_>) -> PyResult<Py<PyList>> {
+    pub fn list_jobs() -> PyResult<Vec<PyJobInfo>> {
         let jobs = runtime::with_gcs(super::gcs::GcsBinding::list_jobs)?
             .ok_or_else(|| {
                 pyo3::exceptions::PyRuntimeError::new_err(
@@ -1718,11 +1713,7 @@ pub mod _native {
             .map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!("gcs list_jobs: {e}"))
             })?;
-        let out = PyList::empty(py);
-        for job in jobs {
-            out.append(convert_job(job))?;
-        }
-        Ok(out.unbind())
+        Ok(jobs.into_iter().map(convert_job).collect())
     }
 
     /// Register a named actor in the GCS directory.
@@ -1795,7 +1786,7 @@ pub mod _native {
     /// Snapshot all named actors the GCS knows about. Mostly for tests
     /// & tooling; production callers should use `_lookup_named_actor`.
     #[pyfunction]
-    pub fn list_actors(py: Python<'_>) -> PyResult<Py<PyList>> {
+    pub fn list_actors() -> PyResult<Vec<PyActorInfo>> {
         let actors = runtime::with_gcs(super::gcs::GcsBinding::list_actors)?
             .ok_or_else(|| {
                 pyo3::exceptions::PyRuntimeError::new_err(
@@ -1805,11 +1796,7 @@ pub mod _native {
             .map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!("gcs list_actors: {e}"))
             })?;
-        let out = PyList::empty(py);
-        for actor in actors {
-            out.append(convert_actor(actor))?;
-        }
-        Ok(out.unbind())
+        Ok(actors.into_iter().map(convert_actor).collect())
     }
 
     /// 16-byte cluster session id assigned by the GCS we connected to.
@@ -1866,7 +1853,7 @@ pub mod _native {
     /// list of 16-byte `node_id`s (empty when no replicas are known —
     /// not an error).
     #[pyfunction]
-    pub fn get_object_locations(py: Python<'_>, object_id: Vec<u8>) -> PyResult<Py<PyList>> {
+    pub fn get_object_locations(object_id: Vec<u8>) -> PyResult<Vec<Vec<u8>>> {
         let oid = parse_object_id_28(&object_id)?;
         let ids = runtime::with_gcs(|binding| binding.get_object_locations_local(oid))?
             .ok_or_else(|| {
@@ -1877,11 +1864,10 @@ pub mod _native {
             .map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!("get_object_locations: {e}"))
             })?;
-        let out = PyList::empty(py);
-        for nid in ids {
-            out.append(PyBytes::new(py, &nid))?;
-        }
-        Ok(out.unbind())
+        // `Vec<Vec<u8>>` introspects to `list[bytes]` because PyO3 maps
+        // `Vec<u8>` to `bytes` (not `list[int]`) — exactly the runtime
+        // surface, no fix_stubs override needed.
+        Ok(ids.into_iter().map(|n| n.to_vec()).collect())
     }
 
     /// Pull `object_id` from a (possibly remote) raylet at `host:port`.
@@ -2115,19 +2101,12 @@ pub mod _native {
     /// Pyo3's auto-generated `FromPyObject` for `frozen + Clone + from_py_object`
     /// pyclasses returns `PyClassGuardError` instead of `PyErr`. We sidestep
     /// the conversion by going through `downcast` + `borrow().clone()`.
+    /// Single-element extractor for `get()` which accepts either an
+    /// `ObjectRef` or a list. Other functions take `Vec<PyObjectRef>`
+    /// directly so they don't need this helper.
     fn extract_ref(value: &Bound<'_, PyAny>) -> PyResult<PyObjectRef> {
         let bound = value.cast::<PyObjectRef>()?;
         Ok(bound.borrow().clone())
-    }
-
-    fn extract_refs(list: &Bound<'_, PyList>) -> PyResult<Vec<PyObjectRef>> {
-        list.iter().map(|item| extract_ref(&item)).collect()
-    }
-
-    fn extract_ids(list: &Bound<'_, PyList>) -> PyResult<Vec<ObjectId>> {
-        list.iter()
-            .map(|item| Ok(*extract_ref(&item)?.inner.object_id()))
-            .collect()
     }
 
     fn error_info_from_object(

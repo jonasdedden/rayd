@@ -26,9 +26,6 @@ from rayd._native import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-# Internal constants
-_KIND_PAYLOAD_LEN: int = 2
-
 
 # ── Distributed-runtime exceptions ─────────────────────────────────────
 
@@ -131,11 +128,7 @@ class RemoteFunction[**P, R]:
         if not refs:
             msg = f"submit_task returned no refs: {refs!r}"
             raise RuntimeError(msg)
-        first = refs[0]
-        if not isinstance(first, ObjectRef):
-            msg = f"submit_task returned non-ObjectRef: {type(first).__name__}"
-            raise TypeError(msg)
-        return first
+        return refs[0]
 
 
 def remote[**P, R](fn: Callable[P, R]) -> RemoteFunction[P, R]:
@@ -287,12 +280,7 @@ def _resolve_remote_ref(
         return nodes_cache if nodes_cache is not None else []
 
     if nodes_cache is None:
-        nodes_cache = []
-        for n in _native.list_nodes():
-            if not isinstance(n, _native.NodeInfo):
-                msg = f"list_nodes returned non-NodeInfo: {type(n).__name__}"
-                raise TypeError(msg)
-            nodes_cache.append(n)
+        nodes_cache = list(_native.list_nodes())
     owner_status = next(
         (n.status for n in nodes_cache if bytes(n.node_id) == owner_nid),
         None,
@@ -363,11 +351,7 @@ def get_settled(
     _ensure_local_for_remote_refs(refs)
     raw = _native.get_settled(refs, timeout)
     out: list[Result[object]] = []
-    for entry in raw:
-        if not isinstance(entry, tuple) or len(entry) != _KIND_PAYLOAD_LEN:
-            msg = f"unexpected entry shape from get_settled: {entry!r}"
-            raise TypeError(msg)
-        kind, payload = entry
+    for kind, payload in raw:
         if kind == "ok":
             out.append(Ok(value=payload))
         elif kind == "err":
@@ -385,14 +369,7 @@ def get_settled(
 
 def state(refs: Sequence[ObjectRef]) -> dict[ObjectRef, RefState]:
     """Snapshot every ref's lifecycle state. Cheap; no deserialization."""
-    raw = _native.state(refs)
-    out: dict[ObjectRef, RefState] = {}
-    for k, v in raw.items():
-        if not isinstance(k, ObjectRef) or not isinstance(v, RefState):
-            msg = f"unexpected entry from state(): {type(k).__name__} -> {type(v).__name__}"
-            raise TypeError(msg)
-        out[k] = v
-    return out
+    return dict(_native.state(refs))
 
 
 def wait(
@@ -401,12 +378,8 @@ def wait(
     timeout: float | None = None,
 ) -> tuple[list[ObjectRef], list[ObjectRef]]:
     """Wait for `num_returns` refs to settle; return `(ready, not_ready)`."""
-    raw = _native.wait(refs, num_returns, timeout)
-    if len(raw) != _KIND_PAYLOAD_LEN:
-        msg = f"native wait returned unexpected tuple shape: {raw!r}"
-        raise RuntimeError(msg)
-    ready_raw, not_ready_raw = raw
-    return _coerce_ref_list(ready_raw), _coerce_ref_list(not_ready_raw)
+    ready, not_ready = _native.wait(refs, num_returns, timeout)
+    return ready, not_ready
 
 
 def wait_with_states(
@@ -414,35 +387,12 @@ def wait_with_states(
     timeout: float | None = None,
 ) -> dict[ObjectRef, RefState]:
     """Block up to `timeout` for refs to settle; return per-ref states."""
-    raw = _native.wait_with_states(refs, timeout)
-    out: dict[ObjectRef, RefState] = {}
-    for k, v in raw.items():
-        if not isinstance(k, ObjectRef) or not isinstance(v, RefState):
-            msg = (
-                f"unexpected entry from wait_with_states(): "
-                f"{type(k).__name__} -> {type(v).__name__}"
-            )
-            raise TypeError(msg)
-        out[k] = v
-    return out
+    return dict(_native.wait_with_states(refs, timeout))
 
 
 def free(refs: Sequence[ObjectRef]) -> None:
     """Free a list of refs from the local store."""
     _native.free(refs)
-
-
-def _coerce_ref_list(raw: object) -> list[ObjectRef]:
-    if not isinstance(raw, list):
-        msg = f"expected a list of ObjectRef, got {type(raw).__name__}"
-        raise TypeError(msg)
-    out: list[ObjectRef] = []
-    for item in raw:
-        if not isinstance(item, ObjectRef):
-            msg = f"expected ObjectRef, got {type(item).__name__}"
-            raise TypeError(msg)
-        out.append(item)
-    return out
 
 
 __all__ = [

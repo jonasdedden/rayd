@@ -341,7 +341,7 @@ def fetch_object(object_id: Sequence[int], owner_node_id: Sequence[int]) -> None
     """
     ...
 
-def free(refs: Sequence[object]) -> None:
+def free(refs: Sequence[ObjectRef]) -> None:
     """Free a list of refs from the local store. (No-op if not present.)"""
     ...
 
@@ -354,14 +354,16 @@ def get(refs: object, timeout: float | None = None) -> object:
     """
     ...
 
-def get_object_locations(object_id: Sequence[int]) -> list[object]:
+def get_object_locations(object_id: Sequence[int]) -> list[bytes]:
     """Ask the LOCAL raylet which nodes hold `object_id`. Returns the
     list of 16-byte `node_id`s (empty when no replicas are known —
     not an error).
     """
     ...
 
-def get_settled(refs: Sequence[object], timeout: float | None = None) -> list[object]:
+def get_settled(
+    refs: Sequence[ObjectRef], timeout: float | None = None
+) -> list[tuple[str, object]]:
     """Like `get`, but returns one entry per ref without raising on
     individual failures. The result is a list whose entries are:
 
@@ -395,20 +397,20 @@ def job_id() -> bytes | None:
     """
     ...
 
-def list_actors() -> list[object]:
+def list_actors() -> list[ActorInfo]:
     """Snapshot all named actors the GCS knows about. Mostly for tests
     & tooling; production callers should use `_lookup_named_actor`.
     """
     ...
 
-def list_jobs() -> list[object]:
+def list_jobs() -> list[JobInfo]:
     """Snapshot all jobs the GCS knows about (running + finished).
 
     Raises `RuntimeError` if `RAYD_GCS_ADDRESS` was not set on `init()`.
     """
     ...
 
-def list_nodes() -> list[object]:
+def list_nodes() -> list[NodeInfo]:
     """Snapshot all nodes the GCS knows about.
 
     Raises `RuntimeError` if `RAYD_GCS_ADDRESS` was not set on `init()`,
@@ -486,9 +488,15 @@ def shutdown() -> None:
     """
     ...
 
-def state(refs: Sequence[object]) -> dict[object, object]:
+def state(refs: Sequence[ObjectRef]) -> list[tuple[ObjectRef, RefState]]:
     """Snapshot per-ref state. One mutex acquisition for the whole batch;
     no payload deserialization.
+
+    Returns a list of `(ref, state)` pairs rather than a dict so
+    `PyO3`'s `experimental-inspect` can emit a precise
+    `list[tuple[ObjectRef, RefState]]` type hint without relying
+    on `Py<PyDict>` (which erases to bare `dict`). The Python
+    facade rewraps via `dict(...)`.
     """
     ...
 
@@ -497,7 +505,7 @@ def submit_task(
     args: tuple[object, ...],
     kwargs: Mapping[str, object] | None = None,
     num_returns: int = 1,
-) -> list[object]:
+) -> list[ObjectRef]:
     """Submit a callable for asynchronous execution. Returns a list of
     `ObjectRef`s — one per return value. With `num_returns == 1` the
     list has length 1; the Python facade unwraps to a single ref.
@@ -520,14 +528,16 @@ def try_resubmit_for_lineage(object_id: Sequence[int]) -> bool:
     ...
 
 def wait(
-    refs: Sequence[object], num_returns: int = 1, timeout: float | None = None
-) -> tuple[object, ...]:
+    refs: Sequence[ObjectRef], num_returns: int = 1, timeout: float | None = None
+) -> tuple[list[ObjectRef], list[ObjectRef]]:
     """Wait for at least `num_returns` of `refs` to enter a terminal state.
     Returns `(ready, not_ready)` lists.
     """
     ...
 
-def wait_with_states(refs: Sequence[object], timeout: float | None = None) -> dict[object, object]:
+def wait_with_states(
+    refs: Sequence[ObjectRef], timeout: float | None = None
+) -> list[tuple[ObjectRef, RefState]]:
     """Wait variant that returns a snapshot of states instead of a
     `(ready, not_ready)` split. Matches `state()` in shape but blocks
     for `timeout` to give pending refs a chance to land.

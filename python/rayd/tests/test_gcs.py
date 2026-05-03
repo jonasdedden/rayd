@@ -164,14 +164,8 @@ def test_shutdown_drains_node_and_finishes_job(
     # first one as drained/finished.
     rayd.init()
     try:
-        nodes_by_id: dict[bytes, _native.NodeInfo] = {}
-        for raw in _native.list_nodes():
-            assert isinstance(raw, _native.NodeInfo)
-            nodes_by_id[bytes(raw.node_id)] = raw
-        jobs_by_id: dict[bytes, _native.JobInfo] = {}
-        for raw in _native.list_jobs():
-            assert isinstance(raw, _native.JobInfo)
-            jobs_by_id[bytes(raw.job_id)] = raw
+        nodes_by_id = {bytes(n.node_id): n for n in _native.list_nodes()}
+        jobs_by_id = {bytes(j.job_id): j for j in _native.list_jobs()}
         assert first_nid is not None
         assert first_jid is not None
         first = nodes_by_id.get(bytes(first_nid))

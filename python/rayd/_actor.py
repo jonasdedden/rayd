@@ -683,13 +683,10 @@ class _RemoteActorHandle:
             # No GCS attached on this driver — leave OSError to
             # surface as-is; the user's setup is already broken.
             return
-        owner_status: str | None = None
-        for n in nodes:
-            if not isinstance(n, _native.NodeInfo):
-                continue
-            if bytes(n.node_id) == self._owner_node_id:
-                owner_status = n.status
-                break
+        owner_status: str | None = next(
+            (n.status for n in nodes if bytes(n.node_id) == self._owner_node_id),
+            None,
+        )
         if owner_status == "alive":
             return
         msg = (

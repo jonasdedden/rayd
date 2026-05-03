@@ -61,7 +61,6 @@ _CONST_RE = re.compile(r"^(\w+)\s*:\s*Final\b", re.MULTILINE)
 _ALL_RE = re.compile(r"^__all__\s*=", re.MULTILINE)
 _ALL_RE_FULL = re.compile(r"^__all__\s*=\s*\[[^\]]*\]", re.MULTILINE)
 
-
 def _rewrite_dunders(text: str) -> str:
     return _DUNDER_RE.sub(
         lambda m: f"def {m.group(1)}(self, value: object, /) -> bool: ...",

@@ -4,7 +4,7 @@
 VENV_BIN := .venv/bin
 PYTHON := $(VENV_BIN)/python
 
-.PHONY: venv build stubs test lint check clean bench
+.PHONY: venv build stubs stubtest test lint check clean bench
 
 venv:
 	uv venv
@@ -41,7 +41,14 @@ lint:
 	uv run ruff check python
 	uv run mypy
 
-check: lint stubs test
+# Verify the committed `_native.pyi` matches the live `rayd._native`
+# runtime types. Catches a regression of the per-function overrides
+# in `tools/fix_stubs.py` — e.g. if PyO3 starts returning a different
+# class shape than the .pyi advertises.
+stubtest: build
+	uv run python -m mypy.stubtest rayd._native
+
+check: lint stubs stubtest test
 	@echo "all checks green."
 
 bench: build
