@@ -37,6 +37,7 @@ dev = [
     "ruff>=0.7",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "libcst>=1.8.6",
 ]
 
 [tool.maturin]
@@ -54,13 +55,20 @@ include = [
 python_version = "3.12"
 strict = true
 disallow_any_unimported = true
-disallow_any_explicit = true
+# NB: `disallow_any_explicit` is intentionally NOT set. The generated
+# `_native.pyi` uses `Any` for genuinely dynamic PyO3 `Bound<PyAny>` values
+# (pickled payloads etc.), which is the honest hint; banning it only bought
+# an `Any`→`object` rewrite in `tools/fix_stubs.py` with no real benefit,
+# since `_native` is a private module re-wrapped by the typed facade.
 disallow_any_generics = true
 disallow_subclassing_any = true
 warn_return_any = true
 warn_unused_ignores = true
 warn_unreachable = true
 files = ["python/rayd"]
+# `tools/` isn't a package; expose it so tests can `import fix_stubs` and so
+# mypy type-checks the stub-fixer alongside the code it post-processes.
+mypy_path = "tools"
 
 # ── ruff ─────────────────────────────────────────────────────────────────
 [tool.ruff]
@@ -100,3 +108,5 @@ ignore = [
 testpaths = ["python/rayd/tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 filterwarnings = ["error"]
+# `tools/fix_stubs.py` lives outside the package; put it on the path for its unit test.
+pythonpath = ["tools"]
