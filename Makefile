@@ -30,12 +30,9 @@ stubs-only:
 	RAYD_CDYLIB_PATH=$(shell .venv/bin/python -c 'import rayd._native, pathlib; print(rayd._native.__file__)') \
 	    cargo run --bin stub_gen
 	$(PYTHON) tools/fix_stubs.py python/rayd/_native.pyi
-	# Splice runtime docstrings (from Rust doc comments captured as
-	# `__doc__`) into the stub so IDEs and `help()` and the .pyi all
-	# read from the same source. Must run AFTER fix_stubs (which uses
-	# regex on bare `: ...` bodies) and BEFORE ruff format (which
-	# normalises whitespace).
-	$(PYTHON) tools/inject_docstrings.py python/rayd/_native.pyi
+	# Docstrings are emitted natively by pyo3 0.29 (PR #5782), so the
+	# old `tools/inject_docstrings.py` splice step is gone. fix_stubs
+	# is docstring-aware and only rewrites signatures.
 	# Format the regenerated stub so the committed copy is byte-
 	# identical to a fresh regeneration — without this step the CI
 	# stubs-freshness diff fails on whitespace-only deltas (multi-line
