@@ -1,177 +1,257 @@
 """Post-process generated `_native.pyi` for mypy + stubtest compatibility.
 
-Three groups of fixes are applied:
+Three transformations are applied via `libcst`, whose concrete syntax tree is
+lossless — every unchanged token (crucially the native docstrings pyo3 0.29
+emits, PR #5782, including PEP 224 attribute docstrings) is preserved exactly,
+and only the nodes we rewrite change. `ruff format` runs after this script
+(see the Makefile) to restore the project's stub formatting.
 
-1. **Liskov fixup** — PyO3 0.28's introspection emits `__eq__`/`__ne__`
-   with the concrete pyclass type and the parameter named `other`, but the
-   runtime implementation accepts `(self, value, /)`. We rewrite to
-   `def __eq__(self, value: object, /) -> bool: ...`.
-2. **Generics tightening** — the introspection emits `Any` for `Bound<PyAny>`,
-   `list` for `Bound<PyList>`, `dict` for `Bound<PyDict>`, and `tuple` for
-   `Bound<PyTuple>`. With `mypy --strict` (and our project's ban on `Any` in
-   typed code), those bare generics fail. We tighten to `object`,
-   `list[object]`, `dict[object, object]`, and `tuple[object, ...]`.
+1. **Comparison-dunder calling convention** — pyo3 0.29 (PR #5841) emits
+   `object` as the input *type* of rich-comparison dunders, but as
+   `def __eq__(self, /, other: object) -> bool: ...` where `other` is
+   positional-*or-keyword*. The CPython `tp_richcompare` slot is
+   positional-*only*, so `stubtest` rejects that (though `mypy` accepts it).
+   We fold the parameter into the positional-only group, renaming pyo3's
+   `other` to the runtime's `value`.
+2. **Bare-generic parametrization** — the introspection emits bare `list` for
+   `Bound<PyList>`, bare `dict` for `Bound<PyDict>`, and bare `tuple` for
+   `Bound<PyTuple>`. `mypy --strict` (`disallow_any_generics`) rejects bare
+   generics, so we fill them (only in annotation position) with `Any`:
+   `list[Any]`, `dict[Any, Any]`, `tuple[Any, ...]`. `Any` itself is left as-is
+   — the config does not set `disallow_any_explicit`.
 3. **`__all__`** — exported by the runtime but missing from the stub. We
-   append it, derived from the public top-level names.
+   append (or replace) it, derived from the public top-level names.
 
 Run after `stub_gen`, before any check that uses mypy.
 """
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
-# (1) Liskov fixup
-_DUNDER_RE = re.compile(
-    r"def (__eq__|__ne__)\(self, /, other: [^)]+\) -> bool: \.\.\.",
-)
+import libcst as cst
 
-# (2a) Replace the PyO3 stub's `Any` with `object`. We do this with a token
-# match so we don't touch unrelated identifiers.
-_ANY_TOKEN_RE = re.compile(r"\bAny\b")
+# Rich-comparison dunders: their `tp_richcompare` slot is positional-only.
+_SLOT_DUNDERS = frozenset({"__eq__", "__ne__", "__lt__", "__le__", "__gt__", "__ge__"})
 
-# (2b) Tighten bare generics in stub function signatures.
-#
-# Inputs use covariant abstract types (`Sequence`, `Mapping`) so a typed
-# `list[ObjectRef]` can be passed to a parameter annotated as
-# `Sequence[object]` without tripping mypy's invariance.
-# Returns use concrete types (`list[object]`, `dict[object, object]`,
-# `tuple[object, ...]`) — variance isn't an issue on the way out.
-_PARAM_LIST_RE = re.compile(r"(:\s*)list\b(?!\[)")
-_RET_LIST_RE = re.compile(r"(->\s*)list\b(?!\[)")
-_PARAM_DICT_RE = re.compile(r"(:\s*)dict\b(?!\[)")
-_RET_DICT_RE = re.compile(r"(->\s*)dict\b(?!\[)")
-_PARAM_TUPLE_RE = re.compile(r"(:\s*)tuple\b(?!\[)")
-_RET_TUPLE_RE = re.compile(r"(->\s*)tuple\b(?!\[)")
-# Bare `tuple` nested inside another generic, e.g. `tuple[object, tuple]`
-# from `__reduce__`'s outer-tuple-of-(callable, args) signature.
-_NESTED_BARE_TUPLE_RE = re.compile(r"(,\s*)tuple\b(?!\[)")
-_NEEDS_SEQUENCE_IMPORT_RE = re.compile(r"\bSequence\[")
-_NEEDS_MAPPING_IMPORT_RE = re.compile(r"\bMapping\[")
-_HAS_SEQUENCE_IMPORT_RE = re.compile(r"^from collections\.abc import .*\bSequence\b", re.MULTILINE)
-_HAS_MAPPING_IMPORT_RE = re.compile(r"^from collections\.abc import .*\bMapping\b", re.MULTILINE)
-_COLLECTIONS_ABC_LINE_RE = re.compile(r"^from collections\.abc import (.+)$", re.MULTILINE)
+# Bare builtin generics that must be parametrized for `mypy --strict`.
+_BARE_GENERICS = frozenset({"list", "dict", "tuple"})
 
-# (3) Top-level declarations.
-_CLASS_RE = re.compile(r"^class (\w+)[\s(:]", re.MULTILINE)
-_FUNC_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
-_CONST_RE = re.compile(r"^(\w+)\s*:\s*Final\b", re.MULTILINE)
-_ALL_RE = re.compile(r"^__all__\s*=", re.MULTILINE)
-_ALL_RE_FULL = re.compile(r"^__all__\s*=\s*\[[^\]]*\]", re.MULTILINE)
 
-def _rewrite_dunders(text: str) -> str:
-    return _DUNDER_RE.sub(
-        lambda m: f"def {m.group(1)}(self, value: object, /) -> bool: ...",
-        text,
+def _parametrized(name: str) -> cst.Subscript:
+    """`list[Any]`, `dict[Any, Any]`, or `tuple[Any, ...]` as a CST node."""
+    if name == "list":
+        elements: list[cst.BaseExpression] = [cst.Name("Any")]
+    elif name == "dict":
+        elements = [cst.Name("Any"), cst.Name("Any")]
+    else:  # tuple
+        elements = [cst.Name("Any"), cst.Ellipsis()]
+    return cst.Subscript(
+        value=cst.Name(name),
+        slice=[cst.SubscriptElement(slice=cst.Index(value=e)) for e in elements],
     )
 
 
-def _tighten_generics(text: str) -> str:
-    text = _ANY_TOKEN_RE.sub("object", text)
-    text = _PARAM_LIST_RE.sub(r"\1Sequence[object]", text)
-    text = _RET_LIST_RE.sub(r"\1list[object]", text)
-    text = _PARAM_DICT_RE.sub(r"\1Mapping[object, object]", text)
-    text = _RET_DICT_RE.sub(r"\1dict[object, object]", text)
-    text = _PARAM_TUPLE_RE.sub(r"\1tuple[object, ...]", text)
-    text = _RET_TUPLE_RE.sub(r"\1tuple[object, ...]", text)
-    text = _NESTED_BARE_TUPLE_RE.sub(r"\1tuple[object, ...]", text)
-    # Convention: a parameter named `kwargs` always has string keys in Python.
-    # Narrow so callers can pass `dict[str, object]` directly.
-    text = re.sub(
-        r"kwargs:\s*Mapping\[object, object\]",
-        "kwargs: Mapping[str, object]",
-        text,
+def _fill(node: cst.BaseExpression) -> cst.BaseExpression:
+    """Recursively parametrize bare generics inside an annotation expression.
+
+    A `Subscript`'s value (an already-parametrized generic head) is left alone,
+    but its slice is recursed into — so the inner bare `tuple` of
+    `tuple[Any, tuple]` is caught.
+    """
+    if isinstance(node, cst.Name) and node.value in _BARE_GENERICS:
+        return _parametrized(node.value)
+    if isinstance(node, cst.Subscript):
+        new_slice = [
+            (
+                element.with_changes(slice=element.slice.with_changes(value=_fill(element.slice.value)))
+                if isinstance(element.slice, cst.Index)
+                else element
+            )
+            for element in node.slice
+        ]
+        return node.with_changes(slice=new_slice)
+    if isinstance(node, cst.BinaryOperation):  # `X | Y` unions
+        return node.with_changes(left=_fill(node.left), right=_fill(node.right))
+    if isinstance(node, (cst.Tuple, cst.List)):  # e.g. `Callable[[int, str], ...]`
+        new_elements = [
+            element.with_changes(value=_fill(element.value))
+            if isinstance(element, cst.Element)
+            else element
+            for element in node.elements
+        ]
+        return node.with_changes(elements=new_elements)
+    return node
+
+
+class _StubTransformer(cst.CSTTransformer):
+    def leave_Annotation(
+        self, original_node: cst.Annotation, updated_node: cst.Annotation
+    ) -> cst.Annotation:
+        return updated_node.with_changes(annotation=_fill(updated_node.annotation))
+
+    def leave_FunctionDef(
+        self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
+    ) -> cst.FunctionDef:
+        if updated_node.name.value not in _SLOT_DUNDERS:
+            return updated_node
+        params = updated_node.params
+        if not params.params:  # already positional-only -> nothing to move
+            return updated_node
+        moved = [
+            p.with_changes(name=cst.Name("value")) if p.name.value == "other" else p
+            for p in params.params
+        ]
+        # Normalize commas so the moved param + `/` render as `(self, value, /)`
+        # with no trailing comma — a stray one triggers ruff's magic-comma
+        # expansion into a multi-line signature.
+        new_posonly = [
+            p.with_changes(comma=cst.MaybeSentinel.DEFAULT)
+            for p in (*params.posonly_params, *moved)
+        ]
+        new_params = params.with_changes(
+            posonly_params=new_posonly, posonly_ind=cst.ParamSlash(), params=[]
+        )
+        return updated_node.with_changes(params=new_params)
+
+
+def _final(annotation: cst.BaseExpression) -> bool:
+    if isinstance(annotation, cst.Name):
+        return annotation.value == "Final"
+    return (
+        isinstance(annotation, cst.Subscript)
+        and isinstance(annotation.value, cst.Name)
+        and annotation.value.value == "Final"
     )
-    return _ensure_collections_imports(text)
 
 
-def _ensure_collections_imports(text: str) -> str:
-    needs_sequence = bool(_NEEDS_SEQUENCE_IMPORT_RE.search(text))
-    needs_mapping = bool(_NEEDS_MAPPING_IMPORT_RE.search(text))
-    if not (needs_sequence or needs_mapping):
-        return text
-
-    line_match = _COLLECTIONS_ABC_LINE_RE.search(text)
-    if line_match is None:
-        # No existing collections.abc import; insert one at the top.
-        wanted: list[str] = []
-        if needs_mapping:
-            wanted.append("Mapping")
-        if needs_sequence:
-            wanted.append("Sequence")
-        new_line = f"from collections.abc import {', '.join(wanted)}\n"
-        return new_line + text
-
-    existing = {n.strip() for n in line_match.group(1).split(",")}
-    if needs_sequence:
-        existing.add("Sequence")
-    if needs_mapping:
-        existing.add("Mapping")
-    new_line = f"from collections.abc import {', '.join(sorted(existing))}"
-    start, end = line_match.span()
-    return text[:start] + new_line + text[end:]
-
-
-def _drop_any_from_imports(text: str) -> str:
-    """Remove `Any` from `from typing import ...` lines.
-
-    Idempotent. Run *before* the body-level `Any` → `object` rewrite, so the
-    rewrite doesn't accidentally produce `from typing import object, Final`.
+def _public_names(module: cst.Module) -> list[str]:
+    """Public top-level names, ordered to mirror the runtime `__all__`:
+    `Final` constants, then classes, then functions, each in source order.
     """
-    pattern_leading = re.compile(r"^(from typing import )Any,\s*", re.MULTILINE)
-    pattern_middle = re.compile(r"^(from typing import .+?),\s*Any(?=[,\s])", re.MULTILINE)
-    pattern_trailing = re.compile(r"^(from typing import .+?),\s*Any$", re.MULTILINE)
-    pattern_only = re.compile(r"^from typing import Any$\n", re.MULTILINE)
+    consts: list[str] = []
+    classes: list[str] = []
+    funcs: list[str] = []
+    for stmt in module.body:
+        if isinstance(stmt, cst.ClassDef):
+            classes.append(stmt.name.value)
+        elif isinstance(stmt, cst.FunctionDef):
+            funcs.append(stmt.name.value)
+        elif isinstance(stmt, cst.SimpleStatementLine):
+            for small in stmt.body:
+                if (
+                    isinstance(small, cst.AnnAssign)
+                    and isinstance(small.target, cst.Name)
+                    and _final(small.annotation.annotation)
+                ):
+                    consts.append(small.target.value)
 
-    text = pattern_only.sub("", text)
-    text = pattern_leading.sub(r"\1", text)
-    text = pattern_middle.sub(r"\1", text)
-    text = pattern_trailing.sub(r"\1", text)
-    return text
-
-
-def _ensure_all(text: str) -> str:
-    """Rewrite or append `__all__` to match the stub's actual top-level names.
-
-    PyO3 0.28 auto-fills `__all__` at runtime including underscore-prefixed
-    entries (e.g. test helpers like `_pool_pending`); pyo3-introspection's
-    emitted stub may omit them. Always regenerating keeps stubtest happy.
-    """
-    names: list[str] = []
+    ordered: list[str] = []
     seen: set[str] = set()
-    # Constants first (matches __version__'s spot in the runtime list).
-    for regex in (_CONST_RE, _CLASS_RE, _FUNC_RE):
-        for match in regex.finditer(text):
-            name = match.group(1)
-            # Dunder names (e.g. `__getattr__`) should never be in __all__.
-            if name.startswith("__") and name != "__version__":
-                continue
-            if name in seen:
-                continue
-            seen.add(name)
-            names.append(name)
-    if not names:
-        return text
-    formatted = ", ".join(repr(n) for n in names)
-    new_all = f"__all__ = [{formatted}]"
+    for name in (*consts, *classes, *funcs):
+        if name.startswith("__") and name != "__version__":
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
 
-    if _ALL_RE.search(text):
-        return _ALL_RE_FULL.sub(new_all, text, count=1)
-    return f"{text.rstrip()}\n\n{new_all}\n"
+
+def _all_statement(names: list[str]) -> cst.SimpleStatementLine:
+    elements = [cst.Element(value=cst.SimpleString(repr(n))) for n in names]
+    assign = cst.Assign(
+        targets=[cst.AssignTarget(target=cst.Name("__all__"))],
+        value=cst.List(elements=elements),
+    )
+    return cst.SimpleStatementLine(body=[assign])
+
+
+def _is_all_assignment(stmt: cst.BaseStatement) -> bool:
+    if not isinstance(stmt, cst.SimpleStatementLine):
+        return False
+    return any(
+        isinstance(small, cst.Assign)
+        and any(isinstance(t.target, cst.Name) and t.target.value == "__all__" for t in small.targets)
+        for small in stmt.body
+    )
+
+
+def _ensure_all(module: cst.Module) -> cst.Module:
+    names = _public_names(module)
+    if not names:
+        return module
+    new_stmt = _all_statement(names)
+    body = list(module.body)
+    for i, stmt in enumerate(body):
+        if isinstance(stmt, cst.SimpleStatementLine) and _is_all_assignment(stmt):
+            # Preserve blank lines / comments that preceded the old assignment.
+            body[i] = new_stmt.with_changes(leading_lines=stmt.leading_lines)
+            return module.with_changes(body=body)
+    return module.with_changes(body=[*body, new_stmt])
+
+
+def _typing_import(stmt: cst.BaseStatement) -> cst.ImportFrom | None:
+    if not isinstance(stmt, cst.SimpleStatementLine):
+        return None
+    for small in stmt.body:
+        if (
+            isinstance(small, cst.ImportFrom)
+            and isinstance(small.module, cst.Name)
+            and small.module.value == "typing"
+            and not isinstance(small.names, cst.ImportStar)
+        ):
+            return small
+    return None
+
+
+def _ensure_any_import(module: cst.Module) -> cst.Module:
+    """Ensure `Any` is importable. No-op when it already is (the usual case,
+    since pyo3 imports `Any` whenever it emits one)."""
+    from libcst import matchers as m
+
+    if not m.findall(module, m.Name("Any")):
+        return module
+
+    body = list(module.body)
+    for i, stmt in enumerate(body):
+        imp = _typing_import(stmt)
+        if imp is None:
+            continue
+        assert not isinstance(imp.names, cst.ImportStar)  # narrowed in _typing_import
+        if any(alias.name.value == "Any" for alias in imp.names):
+            return module  # already imported
+        new_imp = imp.with_changes(names=[*imp.names, cst.ImportAlias(name=cst.Name("Any"))])
+        assert isinstance(stmt, cst.SimpleStatementLine)
+        body[i] = stmt.with_changes(
+            body=[new_imp if small is imp else small for small in stmt.body]
+        )
+        return module.with_changes(body=body)
+
+    # No `from typing import ...` present: add one.
+    new_line = cst.SimpleStatementLine(
+        body=[cst.ImportFrom(module=cst.Name("typing"), names=[cst.ImportAlias(name=cst.Name("Any"))])]
+    )
+    return module.with_changes(body=[new_line, *body])
+
+
+def transform(text: str) -> str:
+    """Return the post-processed stub source for `text`. Pure; no file IO."""
+    module = cst.parse_module(text)
+    module = module.visit(_StubTransformer())
+    module = _ensure_all(module)
+    module = _ensure_any_import(module)
+    return module.code
 
 
 def fix(path: Path) -> bool:
     """Rewrite the stub in-place. Returns True if any change was made."""
     text = path.read_text(encoding="utf-8")
-    text2 = _rewrite_dunders(text)
-    text2 = _drop_any_from_imports(text2)
-    text2 = _tighten_generics(text2)
-    text2 = _ensure_all(text2)
-    if text2 == text:
+    new_text = transform(text)
+    if new_text == text:
         return False
-    path.write_text(text2, encoding="utf-8")
+    path.write_text(new_text, encoding="utf-8")
     return True
 
 
