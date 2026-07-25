@@ -22,8 +22,8 @@ rayd-core.workspace = true
 rayd-gcs.workspace = true
 rayd-plasma.workspace = true
 rayd-raylet.workspace = true
-pyo3 = { version = "0.28", features = ["abi3-py312", "extension-module", "experimental-inspect"] }
-pyo3-introspection = "0.28"
+pyo3 = { version = "0.29", features = ["abi3-py312", "extension-module", "experimental-inspect"] }
+pyo3-introspection = "0.29"
 parking_lot.workspace = true
 bytes.workspace = true
 tempfile = "3"
